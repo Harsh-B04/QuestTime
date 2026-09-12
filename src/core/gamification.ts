@@ -1,8 +1,51 @@
-import type { GamificationStateDTO, BadgeDTO } from '../types';
+import type { GamificationStateDTO, BadgeDTO, CosmeticShopItem } from '../types';
 import { StorageService } from './storage';
 import { Session } from './session';
 import type { SessionLog } from './sessionLog';
 import type { TargetTracker } from './targetTracker';
+
+export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
+  {
+    id: 'theme-cyber-slate',
+    name: 'Cyber Slate',
+    description: 'The standard issue dark cybernetic focus aesthetic.',
+    costXP: 0,
+    accentColor: '#6366f1', // Indigo
+    glowColor: 'rgba(99, 102, 241, 0.4)',
+  },
+  {
+    id: 'theme-emerald-matrix',
+    name: 'Emerald Matrix',
+    description: 'Vibrant digital rain and matrix neon green glow.',
+    costXP: 100,
+    accentColor: '#10b981', // Emerald
+    glowColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  {
+    id: 'theme-solar-flare',
+    name: 'Solar Flare',
+    description: 'High-energy amber and cosmic sunburst radiance.',
+    costXP: 250,
+    accentColor: '#f59e0b', // Amber
+    glowColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  {
+    id: 'theme-amethyst-mystic',
+    name: 'Amethyst Mystic',
+    description: 'Deep royal purple with celestial violet resonance.',
+    costXP: 500,
+    accentColor: '#a855f7', // Purple
+    glowColor: 'rgba(168, 85, 247, 0.4)',
+  },
+  {
+    id: 'theme-neon-synthwave',
+    name: 'Neon Synthwave',
+    description: 'Retrofuturistic hot pink and electric magenta pulses.',
+    costXP: 800,
+    accentColor: '#ec4899', // Pink
+    glowColor: 'rgba(236, 72, 153, 0.4)',
+  },
+];
 
 export const STATIC_BADGES: Omit<BadgeDTO, 'unlockedAt'>[] = [
   {
@@ -39,6 +82,8 @@ export const STATIC_BADGES: Omit<BadgeDTO, 'unlockedAt'>[] = [
 
 export interface SessionEvaluationResult {
   xpGained: number;
+  baseXp: number;
+  streakMultiplier: number;
   bonusAwarded: boolean;
   leveledUp: boolean;
   oldLevel: number;
@@ -68,6 +113,8 @@ export class GamificationEngine {
       streakFreezesAvailable: 1,
       lastFreezeWeek: null,
       badges: STATIC_BADGES.map((b) => ({ ...b, unlockedAt: null })),
+      unlockedCosmetics: ['theme-cyber-slate'],
+      activeCosmetic: 'theme-cyber-slate',
       updatedAt: new Date().toISOString(),
     };
   }
@@ -99,9 +146,16 @@ export class GamificationEngine {
           mergedBadges.push({ ...sb, unlockedAt: null });
         }
       }
+      const unlockedCosmetics = Array.isArray(saved.unlockedCosmetics) && saved.unlockedCosmetics.length > 0
+        ? saved.unlockedCosmetics
+        : ['theme-cyber-slate'];
+      const activeCosmetic = saved.activeCosmetic || 'theme-cyber-slate';
+
       this.state = {
         ...saved,
         badges: mergedBadges,
+        unlockedCosmetics,
+        activeCosmetic,
       };
     } else {
       await this.storage.saveGamificationState(this.state);
@@ -118,7 +172,69 @@ export class GamificationEngine {
   }
 
   public getState(): GamificationStateDTO {
-    return { ...this.state, badges: [...this.state.badges] };
+    return {
+      ...this.state,
+      badges: [...this.state.badges],
+      unlockedCosmetics: [...(this.state.unlockedCosmetics || ['theme-cyber-slate'])],
+    };
+  }
+
+  public getStreakMultiplier(): number {
+    return Number((1 + Math.min(1.0, this.state.currentStreak * 0.05)).toFixed(2));
+  }
+
+  public getUnlockedCosmetics(): string[] {
+    return this.state.unlockedCosmetics || ['theme-cyber-slate'];
+  }
+
+  public getActiveCosmetic(): CosmeticShopItem {
+    const activeId = this.state.activeCosmetic || 'theme-cyber-slate';
+    return COSMETIC_SHOP_ITEMS.find((c) => c.id === activeId) || COSMETIC_SHOP_ITEMS[0];
+  }
+
+  public async purchaseCosmetic(itemId: string): Promise<boolean> {
+    const item = COSMETIC_SHOP_ITEMS.find((c) => c.id === itemId);
+    if (!item) return false;
+
+    const unlocked = new Set(this.state.unlockedCosmetics || ['theme-cyber-slate']);
+    if (unlocked.has(itemId)) {
+      this.state.activeCosmetic = itemId;
+      this.state.updatedAt = new Date().toISOString();
+      await this.storage.saveGamificationState(this.state);
+      this.notify();
+      return true;
+    }
+
+    if (this.state.xp < item.costXP) {
+      return false;
+    }
+
+    this.state.xp -= item.costXP;
+    this.state.level = this.calculateLevel(this.state.xp);
+    unlocked.add(itemId);
+    this.state.unlockedCosmetics = Array.from(unlocked);
+    this.state.activeCosmetic = itemId;
+    this.state.updatedAt = new Date().toISOString();
+
+    await this.storage.saveGamificationState(this.state);
+    this.notify();
+    return true;
+  }
+
+  public async equipCosmetic(itemId: string): Promise<boolean> {
+    const item = COSMETIC_SHOP_ITEMS.find((c) => c.id === itemId);
+    if (!item) return false;
+
+    const unlocked = new Set(this.state.unlockedCosmetics || ['theme-cyber-slate']);
+    if (!unlocked.has(itemId)) {
+      return false;
+    }
+
+    this.state.activeCosmetic = itemId;
+    this.state.updatedAt = new Date().toISOString();
+    await this.storage.saveGamificationState(this.state);
+    this.notify();
+    return true;
   }
 
   public calculateLevel(xp: number): number {
@@ -163,7 +279,7 @@ export class GamificationEngine {
 
   /**
    * Evaluates gamification rules upon a session save:
-   * 1. XP: 1 XP per minute logged + 50 XP bonus when daily category total meets pro-rated weekly target.
+   * 1. XP: 1 XP per minute logged * streak multiplier (+5% per streak day up to +100%) + 50 XP bonus when daily category total meets pro-rated weekly target.
    * 2. Streak: +1 if >=1 session on calendar day; resets if skipped unless streak freeze used.
    * 3. Level: floor(sqrt(totalXP / 50)).
    * 4. Badges check.
@@ -174,12 +290,13 @@ export class GamificationEngine {
     targetTracker: TargetTracker
   ): Promise<SessionEvaluationResult> {
     const oldLevel = this.state.level;
-    let xpGained = 0;
     let bonusAwarded = false;
 
-    // Rule 1: 1 XP per minute logged
+    // Rule 1: 1 XP per minute logged, boosted by current streak multiplier
     const minutes = Math.floor(session.durationSec / 60);
-    xpGained += Math.max(0, minutes);
+    const baseXp = Math.max(0, minutes);
+    const streakMultiplier = this.getStreakMultiplier();
+    let xpGained = Math.round(baseXp * streakMultiplier);
 
     // Rule 1 Bonus: +50 XP bonus when daily category total meets pro-rated weekly target
     const target = targetTracker.getTargetForCategory(session.categoryId);
@@ -211,6 +328,8 @@ export class GamificationEngine {
 
     const result: SessionEvaluationResult = {
       xpGained,
+      baseXp,
+      streakMultiplier,
       bonusAwarded,
       leveledUp,
       oldLevel,

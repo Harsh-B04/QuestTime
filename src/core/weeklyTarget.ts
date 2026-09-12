@@ -5,6 +5,7 @@ export class WeeklyTarget {
   public readonly id: string;
   public categoryId: string;
   public targetHours: number;
+  public dailyTargetHours?: number;
   public weekStartDate: string; // YYYY-MM-DD (Monday)
   public userId?: string;
   public updatedAt: string;
@@ -13,6 +14,7 @@ export class WeeklyTarget {
     this.id = data.id || crypto.randomUUID();
     this.categoryId = data.categoryId;
     this.targetHours = Math.max(0, data.targetHours);
+    this.dailyTargetHours = data.dailyTargetHours !== undefined ? Math.max(0, data.dailyTargetHours) : undefined;
     this.weekStartDate = data.weekStartDate;
     this.userId = data.userId;
     this.updatedAt = data.updatedAt || new Date().toISOString();
@@ -23,6 +25,7 @@ export class WeeklyTarget {
       id: this.id,
       categoryId: this.categoryId,
       targetHours: this.targetHours,
+      dailyTargetHours: this.dailyTargetHours,
       weekStartDate: this.weekStartDate,
       userId: this.userId,
       updatedAt: this.updatedAt,
@@ -68,5 +71,32 @@ export class WeeklyTarget {
     const logged = this.getLoggedHours(sessionLog);
     const expected = this.getProRatedTargetHoursToday();
     return logged >= expected;
+  }
+
+  // --- Daily Quest / Target Methods ---
+  public getLoggedSecondsToday(sessionLog: SessionLog): number {
+    return sessionLog.getTotalForDayAndCategory(new Date(), this.categoryId);
+  }
+
+  public getLoggedHoursToday(sessionLog: SessionLog): number {
+    return Number((this.getLoggedSecondsToday(sessionLog) / 3600).toFixed(1));
+  }
+
+  public getDailyProgressPct(sessionLog: SessionLog): number {
+    if (!this.dailyTargetHours || this.dailyTargetHours <= 0) return 0;
+    const loggedSec = this.getLoggedSecondsToday(sessionLog);
+    const pct = (loggedSec / (this.dailyTargetHours * 3600)) * 100;
+    return Math.min(100, Number(pct.toFixed(1)));
+  }
+
+  public isDailyTargetMet(sessionLog: SessionLog): boolean {
+    if (!this.dailyTargetHours || this.dailyTargetHours <= 0) return false;
+    return this.getLoggedHoursToday(sessionLog) >= this.dailyTargetHours;
+  }
+
+  public getRemainingDailyHours(sessionLog: SessionLog): number {
+    if (!this.dailyTargetHours || this.dailyTargetHours <= 0) return 0;
+    const logged = this.getLoggedHoursToday(sessionLog);
+    return Math.max(0, Number((this.dailyTargetHours - logged).toFixed(1)));
   }
 }

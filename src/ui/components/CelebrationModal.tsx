@@ -119,11 +119,20 @@ export const CelebrationModal: React.FC<CelebrationModalProps> = ({ celebration,
         )}
 
         {/* XP Gains Pill */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-sm font-medium mb-6">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>+{celebration.xpGained} XP Earned</span>
+        <div className="inline-flex flex-col sm:flex-row items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-800/90 border border-slate-700 text-slate-200 text-sm font-medium mb-6 shadow-inner">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-amber-300">+{celebration.xpGained} XP Earned</span>
+          </div>
+          {celebration.streakMultiplier > 1 && (
+            <span className="text-amber-400 text-xs font-semibold bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+              ⚡ {celebration.streakMultiplier}x Streak Boost (+{Math.round((celebration.streakMultiplier - 1) * 100)}%)
+            </span>
+          )}
           {celebration.bonusAwarded && (
-            <span className="text-emerald-400 text-xs font-semibold">(Includes +50 Daily Bonus!)</span>
+            <span className="text-emerald-400 text-xs font-semibold bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+              🎯 +50 Target Bonus!
+            </span>
           )}
         </div>
 

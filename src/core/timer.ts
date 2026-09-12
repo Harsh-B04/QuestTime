@@ -1,15 +1,6 @@
 import { Session } from './session';
-import { StorageService } from './storage';
+import { StorageService, type TimerActiveData } from './storage';
 import type { TimerStatus } from '../types';
-
-export interface TimerActiveData {
-  status: TimerStatus;
-  categoryId: string;
-  note: string;
-  startTimestamp: number;    // Date.now() when current continuous running run began
-  accumulatedSec: number;    // Seconds accumulated in previous running periods (before pauses)
-  sessionStartTime: string;  // ISO string when timer was first started
-}
 
 export class Timer {
   private status: TimerStatus = 'idle';
@@ -18,7 +9,7 @@ export class Timer {
   private startTimestamp: number | null = null;
   private accumulatedSec: number = 0;
   private sessionStartTime: string | null = null;
-  private intervalId: number | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
 
   private tickListeners: Set<(elapsedSec: number) => void> = new Set();
   private stateListeners: Set<(status: TimerStatus) => void> = new Set();
@@ -54,7 +45,7 @@ export class Timer {
 
   private async persistActiveTimer(): Promise<void> {
     if (this.status === 'idle') {
-      await this.storage.removeSetting('active_timer');
+      await this.storage.clearActiveTimer();
     } else if (this.categoryId && this.sessionStartTime) {
       const data: TimerActiveData = {
         status: this.status,
@@ -64,12 +55,12 @@ export class Timer {
         accumulatedSec: this.accumulatedSec,
         sessionStartTime: this.sessionStartTime,
       };
-      await this.storage.setSetting('active_timer', data);
+      await this.storage.saveActiveTimer(data);
     }
   }
 
   public async restoreFromStorage(): Promise<boolean> {
-    const active = await this.storage.getSetting<TimerActiveData>('active_timer');
+    const active = await this.storage.getActiveTimer();
     if (!active) return false;
 
     this.categoryId = active.categoryId;
@@ -90,6 +81,7 @@ export class Timer {
     this.notifyTick();
     return true;
   }
+
 
   public start(categoryId: string, note: string = ''): void {
     if (this.status === 'running') {
@@ -187,6 +179,10 @@ export class Timer {
     return this.status;
   }
 
+  public getStatus(): TimerStatus {
+    return this.status;
+  }
+
   public getCategoryId(): string | null {
     return this.categoryId;
   }
@@ -200,9 +196,19 @@ export class Timer {
     this.persistActiveTimer();
   }
 
+  public getSessionStartTime(): string | null {
+    return this.sessionStartTime;
+  }
+
+  public getContinuousRunningSec(): number {
+    if (this.status !== 'running' || !this.startTimestamp) return 0;
+    return Math.floor((Date.now() - this.startTimestamp) / 1000);
+  }
+
+
   private startTicker(): void {
     this.stopTicker();
-    this.intervalId = window.setInterval(() => {
+    this.intervalId = setInterval(() => {
       this.notifyTick();
     }, 1000);
   }

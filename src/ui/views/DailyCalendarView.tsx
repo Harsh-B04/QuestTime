@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,6 +11,7 @@ import {
   Target,
   ArrowRight,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { appCore } from '../../core';
 import { Session, type Category } from '../../core';
@@ -33,16 +34,23 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
   // Modal states
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editNote, setEditNote] = useState<string>('');
-  const [editDurationMin, setEditDurationMin] = useState<number>(0);
+  const [editDurationMin, setEditDurationMin] = useState<number>(30);
   const [editCategoryId, setEditCategoryId] = useState<string>('');
 
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [addDurationMin, setAddDurationMin] = useState<number>(45);
+  const [addDurationMin, setAddDurationMin] = useState<number>(30);
   const [addCategoryId, setAddCategoryId] = useState<string>(appCore.categories[0]?.id || '');
   const [addNote, setAddNote] = useState<string>('');
 
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [, setTrigger] = useState<number>(0);
+
+  // 5-second Undo Delete state
+  const [undoSession, setUndoSession] = useState<Session | null>(null);
+  const undoSessionRef = useRef<Session | null>(null);
+  const [undoSecondsLeft, setUndoSecondsLeft] = useState<number>(5);
+  const undoTimeoutRef = useRef<number | null>(null);
+  const undoIntervalRef = useRef<number | null>(null);
 
   const forceRefresh = () => setTrigger((t) => t + 1);
 
@@ -68,6 +76,14 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
       unsubLog();
       unsubTargets();
       unsubCats();
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+      if (undoSessionRef.current) {
+        const delId = undoSessionRef.current.id;
+        undoSessionRef.current = null;
+        appCore.sessionLog.delete(delId);
+        appCore.sync.queueChange('sessions', 'DELETE', { id: delId });
+      }
     };
   }, []);
 
@@ -103,8 +119,8 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
   const pad = (n: number) => String(n).padStart(2, '0');
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // All sessions
-  const allSessions = appCore.sessionLog.getAll();
+  // All sessions (excluding session pending deletion)
+  const allSessions = appCore.sessionLog.getAll().filter((s) => s.id !== undoSession?.id);
 
   // Sessions grouped by day string
   const sessionsByDay = allSessions.reduce<Record<string, Session[]>>((acc, s) => {
@@ -263,10 +279,62 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
     forceRefresh();
   };
 
+  const commitPendingDelete = async () => {
+    if (undoSessionRef.current) {
+      const targetId = undoSessionRef.current.id;
+      undoSessionRef.current = null;
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+      setUndoSession(null);
+      await appCore.sessionLog.delete(targetId);
+      await appCore.sync.queueChange('sessions', 'DELETE', { id: targetId });
+      forceRefresh();
+    }
+  };
+
   const handleDeleteSession = async (id: string) => {
-    await appCore.sessionLog.delete(id);
-    await appCore.sync.queueChange('sessions', 'DELETE', { id });
+    if (undoSessionRef.current) {
+      await commitPendingDelete();
+    }
+    const sessionToDelete = appCore.sessionLog.getAll().find((s) => s.id === id);
     setDeleteSessionId(null);
+    if (!sessionToDelete) return;
+
+    setUndoSession(sessionToDelete);
+    undoSessionRef.current = sessionToDelete;
+    setUndoSecondsLeft(5);
+    forceRefresh();
+
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+
+    undoIntervalRef.current = window.setInterval(() => {
+      setUndoSecondsLeft((prev) => {
+        if (prev <= 1) {
+          if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    undoTimeoutRef.current = window.setTimeout(async () => {
+      if (undoSessionRef.current) {
+        const delId = undoSessionRef.current.id;
+        undoSessionRef.current = null;
+        setUndoSession(null);
+        await appCore.sessionLog.delete(delId);
+        await appCore.sync.queueChange('sessions', 'DELETE', { id: delId });
+        forceRefresh();
+      }
+    }, 5000);
+  };
+
+  const handleUndoDelete = () => {
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+    undoSessionRef.current = null;
+    setUndoSession(null);
     forceRefresh();
   };
 
@@ -802,6 +870,34 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5-second Undo Delete Snackbar */}
+      {undoSession && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-md animate-fade-in">
+          <div className="glass-panel bg-slate-900/95 border border-indigo-500/40 rounded-2xl p-3 sm:p-3.5 shadow-2xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse shrink-0" />
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-white truncate block">
+                  Session deleted
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Undo available ({undoSecondsLeft}s)
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleUndoDelete}
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition active:scale-95 flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Undo</span>
               </button>
             </div>
           </div>

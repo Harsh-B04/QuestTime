@@ -23,6 +23,7 @@ export interface WeeklyTargetDTO {
   id: string;
   categoryId: string;
   targetHours: number;
+  dailyTargetHours?: number;
   weekStartDate: string; // YYYY-MM-DD representing Monday of that week
   userId?: string;
   updatedAt?: string;
@@ -36,6 +37,15 @@ export interface BadgeDTO {
   unlockedAt: string | null;
 }
 
+export interface CosmeticShopItem {
+  id: string;
+  name: string;
+  description: string;
+  costXP: number;
+  accentColor: string;
+  glowColor: string;
+}
+
 export interface GamificationStateDTO {
   userId: string;
   xp: number;
@@ -46,6 +56,8 @@ export interface GamificationStateDTO {
   streakFreezesAvailable: number;
   lastFreezeWeek: string | null; // YYYY-WW
   badges: BadgeDTO[];
+  unlockedCosmetics?: string[];
+  activeCosmetic?: string;
   updatedAt: string;
 }
 
@@ -58,3 +70,4 @@ export interface SyncQueueItem {
   payload: any;
   timestamp: string;
 }
+

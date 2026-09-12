@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, Flame, Shield, Sparkles, Clock, CheckCircle2, Lock } from 'lucide-react';
+import { Trophy, Flame, Shield, Sparkles, Clock, CheckCircle2, Lock, Zap } from 'lucide-react';
 import { appCore } from '../../core';
 import type { GamificationStateDTO } from '../../types';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { HeatmapCalendar } from '../components/HeatmapCalendar';
+import { BadgeShop } from '../components/BadgeShop';
 
 export const ProgressView: React.FC = () => {
   const [gameState, setGameState] = useState<GamificationStateDTO>(appCore.gamification.getState());
@@ -27,6 +29,7 @@ export const ProgressView: React.FC = () => {
   }, []);
 
   const nextLevelInfo = appCore.gamification.getXPToNextLevel();
+  const streakMultiplier = appCore.gamification.getStreakMultiplier();
   const totalAllTimeHours = (totalAllTimeSec / 3600).toFixed(1);
 
   const getLevelTitle = (lvl: number) => {
@@ -119,6 +122,12 @@ export const ProgressView: React.FC = () => {
           <div className="text-xs text-slate-400">
             Record: <span className="text-orange-300 font-semibold">{gameState.longestStreak} days</span>
           </div>
+          {streakMultiplier > 1 && (
+            <div className="mt-2.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-300 text-xs font-semibold">
+              <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
+              <span>{streakMultiplier}x XP Boost (+{Math.round((streakMultiplier - 1) * 100)}%)</span>
+            </div>
+          )}
         </div>
 
         {/* Streak Freeze */}
@@ -149,6 +158,11 @@ export const ProgressView: React.FC = () => {
             Across {totalSessionsCount} logged sessions
           </div>
         </div>
+      </div>
+
+      {/* Focus Heatmap Calendar */}
+      <div className="mb-8">
+        <HeatmapCalendar sessionLog={appCore.sessionLog} />
       </div>
 
       {/* Badges Section */}
@@ -219,6 +233,11 @@ export const ProgressView: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* Cosmetics & Theme Shop */}
+      <div className="mb-8">
+        <BadgeShop gamification={appCore.gamification} />
       </div>
     </div>
   );

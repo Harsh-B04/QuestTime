@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -10,6 +10,8 @@ import {
   Sparkles,
   Calendar,
   ArrowRight,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { appCore } from '../../core';
 import type { Category, Session } from '../../core';
@@ -36,12 +38,27 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   const [activeTargetHours, setActiveTargetHours] = useState<number>(0);
   const [dailyGoalHours, setDailyGoalHours] = useState<number | null>(null); // null = not yet set by user
   const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
+  const [showIdleNudge, setShowIdleNudge] = useState<boolean>(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState<boolean>(false);
+  const nudgeDismissedRef = useRef<boolean>(false);
+  const [lastCategory, setLastCategory] = useState<Category | null>(null);
 
   // Sync state with AppCore
   const refreshStats = () => {
     const today = new Date();
     const totalToday = appCore.sessionLog.getTotalForDay(today);
     setTodayLoggedSec(totalToday);
+
+    const allSessions = appCore.sessionLog.getAll();
+    if (allSessions.length > 0) {
+      const sorted = [...allSessions].sort(
+        (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+      const cat = appCore.categories.find((c) => c.id === sorted[0].categoryId);
+      setLastCategory(cat || null);
+    } else {
+      setLastCategory(null);
+    }
 
     const activeCatId = appCore.timer.getCategoryId() || selectedCategoryId;
     if (activeCatId) {
@@ -74,12 +91,21 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       if (activeCat) {
         setSelectedCategoryId(activeCat);
       }
+      if (status === 'idle') {
+        setShowIdleNudge(false);
+        setNudgeDismissed(false);
+        nudgeDismissedRef.current = false;
+      }
       setNote(appCore.timer.getNote());
       refreshStats();
     });
 
     const unsubTimerTick = appCore.timer.onTick((sec) => {
       setElapsedSec(sec);
+      const continuous = appCore.timer.getContinuousRunningSec();
+      if (continuous >= 5400 && !nudgeDismissedRef.current) {
+        setShowIdleNudge(true);
+      }
     });
 
     const unsubCategories = appCore.onCategoriesChange(() => {
@@ -170,6 +196,7 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
 
   const time = formatTime(elapsedSec);
   const gameState = appCore.gamification.getState();
+  const streakMultiplier = appCore.gamification.getStreakMultiplier();
 
   // Daily quest metrics
   const todayDoneHours = Number((todayLoggedSec / 3600).toFixed(1));
@@ -205,6 +232,13 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           <span>Level {gameState.level}</span>
           <span className="text-slate-400 text-[10px] font-mono">({gameState.xp} XP)</span>
         </div>
+
+        {streakMultiplier > 1 && (
+          <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shadow-sm shadow-amber-500/10">
+            <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
+            <span>{streakMultiplier}x XP</span>
+          </div>
+        )}
       </div>
 
       {/* Category Selection Pills */}
@@ -361,6 +395,31 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
         />
       </div>
 
+      {/* Resume Last Category Quick Action */}
+      {timerStatus === 'idle' && lastCategory && (
+        <div className="w-full max-w-sm mb-2 px-1">
+          <button
+            onClick={() => {
+              setSelectedCategoryId(lastCategory.id);
+              sounds.playStart();
+              appCore.timer.start(lastCategory.id, note);
+            }}
+            className="w-full flex items-center justify-between px-4 py-2.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs font-semibold transition shadow-md active:scale-95 select-none"
+            title={`Quick resume focus for ${lastCategory.name}`}
+          >
+            <div className="flex items-center gap-2">
+              <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-slate-400">Resume:</span>
+              <span className="flex items-center gap-1.5 text-white font-bold">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: lastCategory.color }} />
+                {lastCategory.name}
+              </span>
+            </div>
+            <span className="text-[10px] text-indigo-300 uppercase tracking-wider font-mono">Quick Start →</span>
+          </button>
+        </div>
+      )}
+
       {/* Tactile Controls Bar */}
       <div className="flex items-center justify-center gap-2 sm:gap-4 mb-6 sm:mb-8 w-full max-w-sm px-1">
         {timerStatus === 'idle' && (
@@ -451,6 +510,45 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           </div>
         </div>
       )}
+
+      {/* Idle Nudge Prompt (90+ min continuous focus) */}
+      {showIdleNudge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white mb-1">Still on this?</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                You have been focusing continuously for over 90 minutes. Take a quick stretch, stay hydrated, or keep pushing!
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                onClick={() => {
+                  nudgeDismissedRef.current = true;
+                  setNudgeDismissed(true);
+                  setShowIdleNudge(false);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition active:scale-95"
+              >
+                I'm still focusing
+              </button>
+              <button
+                onClick={() => {
+                  setShowIdleNudge(false);
+                  handleStop();
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition active:scale-95"
+              >
+                Done & Log
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* TODAY'S QUEST & DAILY LOGGER DIRECT ACCESS DRAWER */}
       <div className="w-full glass-panel rounded-3xl p-5 border border-indigo-500/25 mb-4">

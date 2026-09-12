@@ -5,7 +5,17 @@ import type {
   WeeklyTargetDTO,
   GamificationStateDTO,
   SyncQueueItem,
+  TimerStatus,
 } from '../types';
+
+export interface TimerActiveData {
+  status: TimerStatus;
+  categoryId: string;
+  note: string;
+  startTimestamp: number;    // Date.now() when current continuous running run began
+  accumulatedSec: number;    // Seconds accumulated in previous running periods before pauses
+  sessionStartTime: string;  // ISO string when timer was first started
+}
 
 const DB_NAME = 'quest_time_db';
 const DB_VERSION = 1;
@@ -172,6 +182,20 @@ export class StorageService {
     const db = await this.getDB();
     await db.delete('key_val', key);
   }
+
+  // --- Active Timer Persistence ---
+  public async getActiveTimer(): Promise<TimerActiveData | null> {
+    return this.getSetting<TimerActiveData>('active_timer');
+  }
+
+  public async saveActiveTimer(data: TimerActiveData): Promise<void> {
+    await this.setSetting('active_timer', data);
+  }
+
+  public async clearActiveTimer(): Promise<void> {
+    await this.removeSetting('active_timer');
+  }
+
 
   // --- Deleted Item Tombstones ---
   public async getDeletedIds(table?: string): Promise<Set<string>> {

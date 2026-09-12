@@ -55,19 +55,24 @@ export class TargetTracker {
   public async setTarget(
     categoryId: string,
     targetHours: number,
-    weekStartDate: string = this.getCurrentWeekStartDate()
+    weekStartDate: string = this.getCurrentWeekStartDate(),
+    dailyTargetHours?: number
   ): Promise<WeeklyTarget> {
     const key = `${weekStartDate}_${categoryId}`;
     let target = this.targets.get(key);
 
     if (target) {
       target.targetHours = Math.max(0, targetHours);
+      if (dailyTargetHours !== undefined) {
+        target.dailyTargetHours = Math.max(0, dailyTargetHours);
+      }
       target.updatedAt = new Date().toISOString();
     } else {
       target = new WeeklyTarget({
         id: crypto.randomUUID(),
         categoryId,
         targetHours: Math.max(0, targetHours),
+        dailyTargetHours: dailyTargetHours !== undefined ? Math.max(0, dailyTargetHours) : undefined,
         weekStartDate,
         updatedAt: new Date().toISOString(),
       });
@@ -78,6 +83,35 @@ export class TargetTracker {
     this.notify();
     return target;
   }
+
+  public async setDailyTarget(
+    categoryId: string,
+    dailyHours: number,
+    weekStartDate: string = this.getCurrentWeekStartDate()
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    if (target) {
+      target.dailyTargetHours = Math.max(0, dailyHours);
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        dailyTargetHours: Math.max(0, dailyHours),
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
 
   public async deleteTarget(id: string): Promise<void> {
     for (const [key, target] of this.targets.entries()) {

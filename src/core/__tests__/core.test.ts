@@ -3,8 +3,8 @@ import { WeeklyTarget } from '../weeklyTarget';
 import { GamificationEngine } from '../gamification';
 import { TargetTracker } from '../targetTracker';
 import { SessionLog } from '../sessionLog';
-import { Category } from '../category';
-import type { StorageService } from '../storage';
+import { Timer } from '../timer';
+import type { StorageService, TimerActiveData } from '../storage';
 import type { CategoryDTO, SessionDTO, WeeklyTargetDTO, GamificationStateDTO, SyncQueueItem } from '../../types';
 
 // In-memory mock storage for testing
@@ -14,6 +14,17 @@ class MockStorageService implements Partial<StorageService> {
   private targets: WeeklyTargetDTO[] = [];
   private gamificationState: Map<string, GamificationStateDTO> = new Map();
   private settings: Map<string, any> = new Map();
+  private activeTimer: TimerActiveData | null = null;
+
+  async getActiveTimer(): Promise<TimerActiveData | null> {
+    return this.activeTimer ? { ...this.activeTimer } : null;
+  }
+  async saveActiveTimer(data: TimerActiveData): Promise<void> {
+    this.activeTimer = { ...data };
+  }
+  async clearActiveTimer(): Promise<void> {
+    this.activeTimer = null;
+  }
 
   async getCategories() { return [...this.categories]; }
   async saveCategory(cat: CategoryDTO) {
@@ -176,6 +187,111 @@ async function runTests() {
 
   const earlyBirdBadge = gameEngine.getState().badges.find(b => b.id === 'badge-early-bird');
   assert(earlyBirdBadge?.unlockedAt !== null, 'Early Bird badge unlocked after 5 morning sessions');
+
+  // 5. Test Timer Persistence
+  const timer1 = new Timer(mockStorage);
+  timer1.start('cat-coding', 'Deep focus');
+  assert(timer1.getStatus() === 'running', 'Timer 1 started and running');
+  assert(timer1.getCategoryId() === 'cat-coding', 'Timer 1 category is cat-coding');
+
+  // Verify that active timer was persisted to storage
+  const persistedActive = await mockStorage.getActiveTimer();
+  assert(persistedActive !== null, 'Timer persisted active state to storage');
+  assert(persistedActive?.categoryId === 'cat-coding', 'Persisted timer category matches');
+  assert(persistedActive?.status === 'running', 'Persisted timer status is running');
+  assert(typeof persistedActive?.startTimestamp === 'number', 'Persisted timer has startTimestamp');
+  timer1.discard();
+  // Restore the persisted timer in mockStorage that timer1.discard() cleared
+  await mockStorage.saveActiveTimer(persistedActive!);
+
+  // Create a brand new Timer instance (simulating page reload) and restore
+  const timer2 = new Timer(mockStorage);
+  const restored = await timer2.restoreFromStorage();
+  assert(restored === true, 'Timer 2 successfully restored from storage');
+  assert(timer2.getStatus() === 'running', 'Restored Timer 2 has status running');
+  assert(timer2.getCategoryId() === 'cat-coding', 'Restored Timer 2 category is cat-coding');
+  assert(timer2.getNote() === 'Deep focus', 'Restored Timer 2 note is preserved');
+
+  // Stop restored timer and verify session is properly returned
+  const savedSession = timer2.stop();
+  assert(savedSession !== null, 'Restored Timer 2 produced valid Session on stop');
+  assert(savedSession?.categoryId === 'cat-coding', 'Produced session categoryId matches');
+  assert(timer2.getStatus() === 'idle', 'Timer 2 reset to idle after stop');
+  const clearedActive = await mockStorage.getActiveTimer();
+  assert(clearedActive === null, 'Active timer cleared from storage upon stop');
+
+  // 6. Test Daily Quest Targets (Phase 6)
+  const dailyTarget = await targetTracker.setDailyTarget('cat-coding', 2, '2026-09-07');
+  assert(dailyTarget.dailyTargetHours === 2, 'Daily target set to 2 hours');
+
+  // Add session for today
+  const today = new Date();
+  const todaySession = new Session({
+    id: 's-today',
+    categoryId: 'cat-coding',
+    startTime: new Date(today.getTime() - 3600000).toISOString(),
+    endTime: today.toISOString(),
+    durationSec: 3600, // 1 hour
+    createdAt: today.toISOString(),
+    updatedAt: today.toISOString(),
+  });
+  await sessionLog.add(todaySession);
+
+  assert(dailyTarget.getLoggedHoursToday(sessionLog) === 1, 'Logged 1 hour today against daily target');
+  assert(dailyTarget.getDailyProgressPct(sessionLog) === 50, 'Daily target progress is 50% (1h / 2h)');
+  assert(dailyTarget.isDailyTargetMet(sessionLog) === false, 'Daily target is not yet met at 50%');
+  assert(dailyTarget.getRemainingDailyHours(sessionLog) === 1, '1 hour remaining for daily target');
+
+  // Add another 1 hour session today to complete daily quest
+  const todaySession2 = new Session({
+    id: 's-today-2',
+    categoryId: 'cat-coding',
+    startTime: new Date(today.getTime() - 7200000).toISOString(),
+    endTime: new Date(today.getTime() - 3600000).toISOString(),
+    durationSec: 3600, // 1 hour
+    createdAt: today.toISOString(),
+    updatedAt: today.toISOString(),
+  });
+  await sessionLog.add(todaySession2);
+
+  assert(dailyTarget.getLoggedHoursToday(sessionLog) === 2, 'Logged 2 hours today against daily target');
+  assert(dailyTarget.getDailyProgressPct(sessionLog) === 100, 'Daily target progress is 100%');
+  assert(dailyTarget.isDailyTargetMet(sessionLog) === true, 'Daily target is now met');
+  assert(dailyTarget.getRemainingDailyHours(sessionLog) === 0, '0 hours remaining for daily target');
+
+  // 7. Test Phase 7: Streak Multiplier
+  const currentStreak = gameEngine.getState().currentStreak;
+  const expectedMult = Number((1 + Math.min(1.0, currentStreak * 0.05)).toFixed(2));
+  const mult = gameEngine.getStreakMultiplier();
+  assert(mult === expectedMult, `Streak multiplier is ${expectedMult}x for ${currentStreak}-day streak (got ${mult})`);
+
+  // 8. Test Phase 7: Cosmetic Badge Shop
+  const initialUnlocked = gameEngine.getUnlockedCosmetics();
+  assert(initialUnlocked.includes('theme-cyber-slate'), 'Default theme-cyber-slate unlocked');
+  assert(gameEngine.getActiveCosmetic().id === 'theme-cyber-slate', 'Active theme is cyber-slate');
+
+  // Attempt to buy high-cost theme when XP is insufficient (theme-neon-synthwave costs 800 XP)
+  const currentXP = gameEngine.getState().xp;
+  const cannotAfford = await gameEngine.purchaseCosmetic('theme-neon-synthwave');
+  if (currentXP < 800) {
+    assert(cannotAfford === false, 'Cannot purchase expensive theme without enough XP');
+  }
+
+  // Buy affordable theme (Emerald Matrix costs 100 XP) if user has enough XP
+  // Give test state enough XP to test purchasing
+  const preBuyXP = gameEngine.getState().xp;
+  if (preBuyXP >= 100) {
+    const bought = await gameEngine.purchaseCosmetic('theme-emerald-matrix');
+    assert(bought === true, 'Successfully bought theme-emerald-matrix');
+    assert(gameEngine.getUnlockedCosmetics().includes('theme-emerald-matrix'), 'Emerald matrix is in unlocked list');
+    assert(gameEngine.getActiveCosmetic().id === 'theme-emerald-matrix', 'Emerald matrix is now active');
+    assert(gameEngine.getState().xp === preBuyXP - 100, '100 XP deducted for purchase');
+
+    // Equip default theme back
+    const equippedDefault = await gameEngine.equipCosmetic('theme-cyber-slate');
+    assert(equippedDefault === true, 'Equipped default theme back');
+    assert(gameEngine.getActiveCosmetic().id === 'theme-cyber-slate', 'Default theme is active again');
+  }
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

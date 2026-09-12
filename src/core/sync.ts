@@ -459,7 +459,11 @@ export class SyncService {
         const mapped = this.mapFromDbColumns('weekly_targets', rt);
         const local = localTargets.find((t) => t.id === mapped.id);
         if (!local || new Date(mapped.updatedAt || 0) > new Date(local.updatedAt || 0)) {
-          await this.storage.saveTarget(mapped);
+          const mergedTarget = {
+            ...mapped,
+            dailyTargetHours: local?.dailyTargetHours ?? mapped.dailyTargetHours,
+          };
+          await this.storage.saveTarget(mergedTarget);
         }
       }
 
@@ -487,7 +491,15 @@ export class SyncService {
         const remoteUpdated = new Date(mapped.updatedAt || 0).getTime();
         const localUpdated = new Date(localGame.updatedAt || 0).getTime();
         if (mapped.xp > localGame.xp || (mapped.xp === localGame.xp && remoteUpdated > localUpdated)) {
-          await this.storage.saveGamificationState(mapped);
+          // Preserve local cosmetics and streak freeze data when pulling remote XP/badges
+          const mergedGame = {
+            ...mapped,
+            unlockedCosmetics: localGame.unlockedCosmetics || ['theme-cyber-slate'],
+            activeCosmetic: localGame.activeCosmetic || 'theme-cyber-slate',
+            streakFreezesAvailable: localGame.streakFreezesAvailable ?? mapped.streakFreezesAvailable,
+            lastFreezeWeek: localGame.lastFreezeWeek ?? mapped.lastFreezeWeek,
+          };
+          await this.storage.saveGamificationState(mergedGame);
         } else if (localGame.xp > mapped.xp || localUpdated > remoteUpdated) {
           await client.from('gamification_state').upsert(
             this.mapToDbColumns('gamification_state', { ...localGame, user_id: userId })

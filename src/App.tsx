@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Calendar, History, Target, Trophy, Settings, Flame } from 'lucide-react';
+import { Clock, Calendar, History, Target, Trophy, Settings, Flame, Cloud, RefreshCw } from 'lucide-react';
 import { appCore } from './core';
 import type { SessionEvaluationResult } from './core/gamification';
+import type { SyncStatus } from './core/sync';
 import { TimerView } from './ui/views/TimerView';
 import { DailyCalendarView } from './ui/views/DailyCalendarView';
 import { HistoryView } from './ui/views/HistoryView';
@@ -19,6 +20,8 @@ export const App: React.FC = () => {
   const [celebration, setCelebration] = useState<SessionEvaluationResult | null>(null);
   const [streakCount, setStreakCount] = useState<number>(0);
   const [currentLevel, setCurrentLevel] = useState<number>(0);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(appCore.sync.getStatus());
+  const [activeCosmetic, setActiveCosmetic] = useState(appCore.gamification.getActiveCosmetic());
 
   useEffect(() => {
     let isMounted = true;
@@ -29,6 +32,7 @@ export const App: React.FC = () => {
         const state = appCore.gamification.getState();
         setStreakCount(state.currentStreak);
         setCurrentLevel(state.level);
+        setActiveCosmetic(appCore.gamification.getActiveCosmetic());
       }
     });
 
@@ -36,16 +40,22 @@ export const App: React.FC = () => {
       const state = appCore.gamification.getState();
       setStreakCount(state.currentStreak);
       setCurrentLevel(state.level);
+      setActiveCosmetic(appCore.gamification.getActiveCosmetic());
     });
 
     const unsubCelebration = appCore.gamification.onCelebration((result) => {
       setCelebration(result);
     });
 
+    const unsubSync = appCore.sync.subscribe((status) => {
+      setSyncStatus(status);
+    });
+
     return () => {
       isMounted = false;
       unsubGame();
       unsubCelebration();
+      unsubSync();
     };
   }, []);
 
@@ -79,19 +89,46 @@ export const App: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#06090e] text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div 
+      className="min-h-screen bg-[#06090e] text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white relative transition-colors duration-500"
+      style={{
+        '--theme-accent': activeCosmetic.accentColor,
+        '--theme-glow': activeCosmetic.glowColor,
+      } as React.CSSProperties}
+    >
+      {/* Dynamic ambient backdrop aura based on active cosmetic theme */}
+      <div 
+        className="fixed inset-0 pointer-events-none opacity-20 transition-all duration-700 z-0"
+        style={{
+          background: `radial-gradient(circle at 15% 15%, ${activeCosmetic.glowColor} 0%, transparent 45%), radial-gradient(circle at 85% 85%, ${activeCosmetic.glowColor} 0%, transparent 45%)`,
+        }}
+      />
+
       {/* Top Header Navbar */}
       <header className="sticky top-0 z-30 glass-panel border-b border-white/5 px-3.5 sm:px-8 py-2.5 sm:py-3.5 pt-safe backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between relative z-10">
           {/* Brand Logo */}
           <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none" onClick={() => setActiveTab('timer')}>
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+            <div 
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shadow-lg shrink-0 transition-all duration-500"
+              style={{
+                background: `linear-gradient(135deg, ${activeCosmetic.accentColor}, #4f46e5)`,
+                boxShadow: `0 4px 16px ${activeCosmetic.glowColor}`,
+              }}
+            >
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">QuestTime</span>
-                <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span 
+                  className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border transition-colors duration-300"
+                  style={{
+                    backgroundColor: `${activeCosmetic.accentColor}20`,
+                    color: activeCosmetic.accentColor,
+                    borderColor: `${activeCosmetic.accentColor}40`,
+                  }}
+                >
                   PWA
                 </span>
               </div>
@@ -108,9 +145,13 @@ export const App: React.FC = () => {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  style={{
+                    backgroundColor: isActive ? activeCosmetic.accentColor : undefined,
+                    boxShadow: isActive ? `0 2px 12px ${activeCosmetic.glowColor}` : undefined,
+                  }}
+                  className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      ? 'text-white shadow-md'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                   }`}
                 >
@@ -119,7 +160,7 @@ export const App: React.FC = () => {
                   {item.badge && (
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        isActive ? 'bg-indigo-700 text-indigo-200' : 'bg-slate-800 text-slate-400'
+                        isActive ? 'bg-black/25 text-white' : 'bg-slate-800 text-slate-400'
                       }`}
                     >
                       {item.badge}
@@ -130,11 +171,45 @@ export const App: React.FC = () => {
             })}
           </nav>
 
-          {/* Streak & Level header chip */}
-          <div className="flex items-center gap-2">
+          {/* Streak & Sync Status header chips */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Synced / Queued Indicator */}
+            <button
+              onClick={() => setActiveTab('settings')}
+              title={
+                syncStatus.isSyncing
+                  ? 'Syncing changes with cloud...'
+                  : syncStatus.pendingCount > 0
+                  ? `${syncStatus.pendingCount} changes queued offline`
+                  : syncStatus.lastSyncedAt
+                  ? `All synced (last: ${new Date(syncStatus.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                  : 'Cloud sync idle'
+              }
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold transition shrink-0 select-none active:scale-95"
+            >
+              {syncStatus.isSyncing ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                  <span className="text-[11px] text-indigo-300 hidden sm:inline">Syncing</span>
+                </>
+              ) : syncStatus.pendingCount > 0 ? (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] text-amber-300 font-mono font-bold">{syncStatus.pendingCount}</span>
+                  <span className="text-[11px] text-amber-300 hidden sm:inline">queued</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-[11px] text-emerald-400/90 hidden sm:inline">Synced</span>
+                </>
+              )}
+            </button>
+
             <button
               onClick={() => setActiveTab('progress')}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-orange-500/40 text-xs font-semibold transition shrink-0"
+              title="Daily Streak"
             >
               <Flame className="w-4 h-4 text-orange-400 fill-current" />
               <span className="text-white font-mono">{streakCount}d</span>
@@ -167,9 +242,13 @@ export const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
+                style={{
+                  color: isActive ? activeCosmetic.accentColor : undefined,
+                  backgroundColor: isActive ? `${activeCosmetic.accentColor}18` : undefined,
+                }}
                 className={`relative flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-colors duration-150 min-h-[46px] select-none active:scale-95 ${
                   isActive
-                    ? 'text-indigo-400 font-bold bg-indigo-500/10'
+                    ? 'font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -178,7 +257,10 @@ export const App: React.FC = () => {
                   {item.label}
                 </span>
                 {isActive && (
-                  <span className="absolute bottom-1 w-1 h-1 rounded-full bg-indigo-400" />
+                  <span 
+                    className="absolute bottom-1 w-1 h-1 rounded-full transition-colors duration-300"
+                    style={{ backgroundColor: activeCosmetic.accentColor }}
+                  />
                 )}
               </button>
             );
