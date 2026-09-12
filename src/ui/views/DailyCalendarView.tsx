@@ -21,12 +21,25 @@ interface DailyCalendarViewProps {
   onSwitchToTimer?: () => void;
 }
 
+/** Returns YYYY-MM-DD in local time */
+const getLocalTodayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Ms until next local midnight */
+const msUntilMidnight = () => {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return midnight.getTime() - now.getTime();
+};
+
 export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchToTimer }) => {
   const [categories, setCategories] = useState<Category[]>(appCore.categories);
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date());
-  const [selectedDateStr, setSelectedDateStr] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(getLocalTodayStr());
+  // Reactive today string — updated at midnight via a timer
+  const [todayStr, setTodayStr] = useState<string>(getLocalTodayStr());
   const [dailyGoalHours, setDailyGoalHours] = useState<number>(4); // Default 4 hours daily focus goal
   const [isEditingDailyGoal, setIsEditingDailyGoal] = useState<boolean>(false);
   const [customGoalInput, setCustomGoalInput] = useState<number>(4);
@@ -87,6 +100,35 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
     };
   }, []);
 
+  // Midnight auto-advance: update todayStr and jump view if user is on "today"
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timeoutId = setTimeout(() => {
+        const newToday = getLocalTodayStr();
+        setTodayStr(newToday);
+        // If the selected date was yesterday's "today", advance to the new day
+        setSelectedDateStr((prev) => {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+          return prev === yStr ? newToday : prev;
+        });
+        // Advance the viewed month if needed
+        setCurrentMonthDate((prev) => {
+          const newDate = new Date();
+          if (prev.getFullYear() === newDate.getFullYear() && prev.getMonth() === newDate.getMonth() - 1) {
+            return new Date(newDate.getFullYear(), newDate.getMonth(), 1);
+          }
+          return prev;
+        });
+        schedule(); // re-arm for next midnight
+      }, msUntilMidnight());
+    };
+    schedule();
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   const saveDailyGoal = async (hours: number) => {
     const val = Math.max(0.5, Math.min(24, hours));
     setDailyGoalHours(val);
@@ -117,7 +159,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
   };
 
   const pad = (n: number) => String(n).padStart(2, '0');
-  const todayStr = new Date().toISOString().split('T')[0];
+  // todayStr is maintained as state (updated at midnight) — do NOT recompute here
 
   // All sessions (excluding session pending deletion)
   const allSessions = appCore.sessionLog.getAll().filter((s) => s.id !== undoSession?.id);

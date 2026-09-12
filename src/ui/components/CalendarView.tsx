@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Edit2, Trash2 } from 'lucide-react';
 import type { Session, Category } from '../../core';
 import { CategoryIcon } from './CategoryIcon';
@@ -10,6 +10,19 @@ interface CalendarViewProps {
   onDeleteSession: (id: string) => void;
 }
 
+/** Returns YYYY-MM-DD in local time */
+const getLocalTodayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Ms until next local midnight */
+const msUntilMidnight = () => {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return midnight.getTime() - now.getTime();
+};
+
 export const CalendarView: React.FC<CalendarViewProps> = ({
   sessions,
   categories,
@@ -17,9 +30,23 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onDeleteSession,
 }) => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [selectedDateStr, setSelectedDateStr] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(getLocalTodayStr());
+  // Reactive today string — updated at midnight via a timer
+  const [todayStr, setTodayStr] = useState<string>(getLocalTodayStr());
+
+  // Advance "today" at midnight
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timeoutId = setTimeout(() => {
+        const newToday = getLocalTodayStr();
+        setTodayStr(newToday);
+        schedule();
+      }, msUntilMidnight());
+    };
+    schedule();
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -75,7 +102,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   }
 
   const calendarDays: DayCell[] = [];
-  const todayStr = new Date().toISOString().split('T')[0];
+  // All calendar grid derivations below use the reactive `todayStr` state
 
   const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -180,7 +207,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   const getDayHeading = (dateStr: string) => {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const yDate = new Date();
+    yDate.setDate(yDate.getDate() - 1);
+    const yesterday = `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, '0')}-${String(yDate.getDate()).padStart(2, '0')}`;
     if (dateStr === todayStr) return 'Today';
     if (dateStr === yesterday) return 'Yesterday';
     const d = new Date(dateStr + 'T12:00:00');

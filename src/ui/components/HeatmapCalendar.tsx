@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import type { SessionLog } from '../../core/sessionLog';
 import { Calendar, Flame } from 'lucide-react';
 
@@ -14,12 +14,43 @@ interface DayData {
   level: number; // 0..4
 }
 
+/** Returns today's date string YYYY-MM-DD in local time */
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+/** Ms until next local midnight */
+const msUntilMidnight = () => {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return midnight.getTime() - now.getTime();
+};
+
 export const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({ sessionLog }) => {
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
+  // Kept as state so useMemo recomputes on day-change
+  const [todayStr, setTodayStr] = useState<string>(getTodayStr());
+
+  // Reschedule at every midnight so the heatmap always shows the correct "today"
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timeoutId = setTimeout(() => {
+        setTodayStr(getTodayStr());
+        schedule(); // re-arm for next midnight
+      }, msUntilMidnight());
+    };
+    schedule();
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   // Generate the last 14 weeks (98 days) ending at the end of the current week (Sunday)
   const { weeks, monthLabels, totalSecLogged, activeDaysCount } = useMemo(() => {
-    const today = new Date();
+    const today = new Date(todayStr + 'T00:00:00');
     today.setHours(0, 0, 0, 0);
 
     // Find coming Sunday (or today if Sunday) to end the grid cleanly
@@ -94,7 +125,7 @@ export const HeatmapCalendar: React.FC<HeatmapCalendarProps> = ({ sessionLog }) 
       totalSecLogged: totalSec,
       activeDaysCount: activeDays,
     };
-  }, [sessionLog]);
+  }, [sessionLog, todayStr]);
 
   const getCellClass = (level: number, isSelected: boolean) => {
     let base = 'w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-sm transition-all duration-150 cursor-pointer ';
