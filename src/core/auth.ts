@@ -99,13 +99,21 @@ export class AuthService {
     return this.client !== null;
   }
 
-  public async signUp(email: string, password: string): Promise<{ user: User | null; error: string | null }> {
+  public async signUp(email: string, password: string): Promise<{ user: User | null; error: string | null; emailConfirmationRequired?: boolean }> {
     if (!this.client) {
       return { user: null, error: 'Supabase is not configured yet. Configure URL and Anon Key in Settings.' };
     }
 
     const { data, error } = await this.client.auth.signUp({ email, password });
     if (error) return { user: null, error: error.message };
+
+    if (!data.session) {
+      return {
+        user: data.user,
+        emailConfirmationRequired: true,
+        error: 'A confirmation link has been sent to your email. Please check your inbox (and Spam folder) to verify your account, or disable "Confirm email" in your Supabase dashboard.',
+      };
+    }
 
     this.currentUser = data.user;
     this.notify();
@@ -118,7 +126,15 @@ export class AuthService {
     }
 
     const { data, error } = await this.client.auth.signInWithPassword({ email, password });
-    if (error) return { user: null, error: error.message };
+    if (error) {
+      if (error.message.toLowerCase().includes('email not confirmed')) {
+        return {
+          user: null,
+          error: 'Your email is not verified yet. Please check your email inbox to click the confirmation link, or disable "Confirm email" in your Supabase dashboard (Authentication -> Providers -> Email).',
+        };
+      }
+      return { user: null, error: error.message };
+    }
 
     this.currentUser = data.user;
     this.notify();

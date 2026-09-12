@@ -50,6 +50,17 @@ export class AppCore {
     }
   }
 
+  public async reloadFromStorage(): Promise<void> {
+    const savedCats = await this.storage.getCategories();
+    if (savedCats.length > 0) {
+      this.categories = savedCats.map((dto) => new Category(dto));
+    }
+    await this.sessionLog.load();
+    await this.targetTracker.load();
+    await this.gamification.load();
+    this.notifyCategories();
+  }
+
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
@@ -73,6 +84,11 @@ export class AppCore {
 
     // 4. Restore any active running/paused timer from storage
     await this.timer.restoreFromStorage();
+
+    // 5. Connect sync updates to auto-refresh in-memory state
+    this.sync.onSyncComplete(async () => {
+      await this.reloadFromStorage();
+    });
 
     this.isInitialized = true;
     this.notifyCategories();

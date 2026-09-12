@@ -21,6 +21,9 @@ export class SyncService {
   private lastError: string | null = null;
   private listeners: Set<(status: SyncStatus) => void> = new Set();
 
+  private syncCompleteCallbacks: Set<() => void> = new Set();
+  private realtimeChannel: any = null;
+
   public static getInstance(
     storage: StorageService = StorageService.getInstance(),
     auth: AuthService = AuthService.getInstance()
@@ -48,6 +51,71 @@ export class SyncService {
         this.isOnline = false;
         this.notify();
       });
+      window.addEventListener('focus', () => {
+        if (this.isOnline && this.auth.isAuthenticated()) {
+          this.syncAll();
+        }
+      });
+      // Periodic background sync every 15 seconds
+      setInterval(() => {
+        if (this.isOnline && this.auth.isAuthenticated() && !this.isSyncing) {
+          this.syncAll();
+        }
+      }, 15000);
+    }
+
+    // When user logs in or out, update realtime and sync
+    this.auth.subscribe((user) => {
+      if (user) {
+        this.setupRealtime(user.id);
+        this.syncAll();
+      } else {
+        this.teardownRealtime();
+      }
+    });
+  }
+
+  public onSyncComplete(callback: () => void): () => void {
+    this.syncCompleteCallbacks.add(callback);
+    return () => this.syncCompleteCallbacks.delete(callback);
+  }
+
+  private notifySyncComplete(): void {
+    for (const cb of this.syncCompleteCallbacks) {
+      try {
+        cb();
+      } catch (e) {
+        console.error('Error in onSyncComplete callback:', e);
+      }
+    }
+  }
+
+  private setupRealtime(userId: string): void {
+    const client = this.auth.getClient();
+    if (!client) return;
+
+    this.teardownRealtime();
+
+    try {
+      this.realtimeChannel = client
+        .channel(`sync_${userId}`)
+        .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
+          if (!this.isSyncing) {
+            await this.pullRemoteChanges(client, userId);
+            this.notifySyncComplete();
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime channel setup failed:', e);
+    }
+  }
+
+  private teardownRealtime(): void {
+    if (this.realtimeChannel) {
+      const client = this.auth.getClient();
+      client?.removeChannel(this.realtimeChannel);
+      this.realtimeChannel = null;
     }
   }
 
@@ -127,18 +195,45 @@ export class SyncService {
           await this.storage.removeSyncQueueItem(item.id);
           pushedCount++;
         } else {
-          // Keep in queue and stop this round to maintain sequence
+          // Stop on first failure to maintain transaction sequence
           break;
         }
       }
 
-      // 2. Pull remote changes newer than lastSyncedAt (Pull)
+      // 2. Also ensure all local sessions, targets, and categories are saved in Supabase
+      const localCats = await this.storage.getCategories();
+      for (const cat of localCats) {
+        await client.from('categories').upsert(this.mapToDbColumns('categories', { ...cat, user_id: user.id }));
+      }
+
+      const localSessions = await this.storage.getSessions();
+      for (const s of localSessions) {
+        await client.from('sessions').upsert(this.mapToDbColumns('sessions', { ...s, user_id: user.id }));
+      }
+
+      const localTargets = await this.storage.getTargets();
+      for (const t of localTargets) {
+        await client.from('weekly_targets').upsert(
+          this.mapToDbColumns('weekly_targets', { ...t, user_id: user.id }),
+          { onConflict: 'user_id, category_id, week_start_date' }
+        );
+      }
+
+      const localGame = await this.storage.getGamificationState(user.id);
+      if (localGame) {
+        await client.from('gamification_state').upsert(
+          this.mapToDbColumns('gamification_state', { ...localGame, user_id: user.id })
+        );
+      }
+
+      // 3. Pull remote changes
       await this.pullRemoteChanges(client, user.id);
 
       this.lastSyncedAt = new Date().toISOString();
       await this.storage.setSetting('last_synced_at', this.lastSyncedAt);
       this.isSyncing = false;
       await this.notify();
+      this.notifySyncComplete();
 
       return { success: true, pushed: pushedCount, error: null };
     } catch (err: any) {
@@ -154,9 +249,13 @@ export class SyncService {
       const payload = { ...item.payload, user_id: userId };
 
       if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+        const options = item.table === 'weekly_targets'
+          ? { onConflict: 'user_id, category_id, week_start_date' }
+          : undefined;
+
         const { error } = await client
           .from(item.table)
-          .upsert(this.mapToDbColumns(item.table, payload));
+          .upsert(this.mapToDbColumns(item.table, payload), options);
         if (error) {
           console.error(`Sync upsert failed on ${item.table}:`, error);
           return false;

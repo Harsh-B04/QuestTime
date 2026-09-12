@@ -106,10 +106,20 @@ export const SettingsView: React.FC = () => {
 
     if (authMode === 'signup') {
       const res = await appCore.auth.signUp(email, password);
-      if (res.error) setAuthError(res.error);
+      if (res.error) {
+        setAuthError(res.error);
+      } else {
+        await appCore.sync.syncAll();
+        await appCore.reloadFromStorage();
+      }
     } else {
       const res = await appCore.auth.signIn(email, password);
-      if (res.error) setAuthError(res.error);
+      if (res.error) {
+        setAuthError(res.error);
+      } else {
+        await appCore.sync.syncAll();
+        await appCore.reloadFromStorage();
+      }
     }
     setAuthLoading(false);
   };
@@ -119,7 +129,10 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSyncNow = async () => {
-    await appCore.sync.syncAll();
+    const res = await appCore.sync.syncAll();
+    if (res.success) {
+      await appCore.reloadFromStorage();
+    }
   };
 
   const handleCreateCategory = async () => {
