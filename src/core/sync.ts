@@ -17,6 +17,7 @@ export class SyncService {
   private auth: AuthService;
   private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
   private isSyncing: boolean = false;
+  private syncPending: boolean = false;
   private lastSyncedAt: string | null = null;
   private lastError: string | null = null;
   private listeners: Set<(status: SyncStatus) => void> = new Set();
@@ -40,6 +41,11 @@ export class SyncService {
   ) {
     this.storage = storage;
     this.auth = auth;
+
+    // Load lastSyncedAt from persistent storage
+    this.storage.getSetting<string>('last_synced_at').then((val) => {
+      if (val) this.lastSyncedAt = val;
+    });
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
@@ -99,8 +105,21 @@ export class SyncService {
     try {
       this.realtimeChannel = client
         .channel(`sync_${userId}`)
-        .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-          if (!this.isSyncing) {
+        .on('postgres_changes', { event: '*', schema: 'public' }, async (payload: any) => {
+          if (payload?.eventType === 'DELETE' && payload?.table && payload?.old?.id) {
+            const id = payload.old.id;
+            if (payload.table === 'sessions') {
+              await this.storage.recordDeletedId('sessions', id);
+              await this.storage.deleteSession(id);
+            } else if (payload.table === 'categories') {
+              await this.storage.recordDeletedId('categories', id);
+              await this.storage.deleteCategory(id);
+            } else if (payload.table === 'weekly_targets') {
+              await this.storage.recordDeletedId('weekly_targets', id);
+              await this.storage.deleteTarget(id);
+            }
+            this.notifySyncComplete();
+          } else if (!this.isSyncing) {
             await this.pullRemoteChanges(client, userId);
             this.notifySyncComplete();
           }
@@ -147,6 +166,17 @@ export class SyncService {
     operation: SyncQueueItem['operation'],
     payload: any
   ): Promise<void> {
+    if (operation === 'DELETE' && payload?.id) {
+      await this.storage.recordDeletedId(table, payload.id);
+      // Clean up any pending INSERT or UPDATE for this same item from the queue
+      const existingQueue = await this.storage.getSyncQueue();
+      for (const item of existingQueue) {
+        if (item.table === table && item.payload?.id === payload.id) {
+          await this.storage.removeSyncQueueItem(item.id);
+        }
+      }
+    }
+
     const item: SyncQueueItem = {
       id: crypto.randomUUID(),
       table,
@@ -177,6 +207,7 @@ export class SyncService {
     }
 
     if (this.isSyncing) {
+      this.syncPending = true;
       return { success: false, pushed: 0, error: 'Sync already in progress.' };
     }
 
@@ -187,7 +218,7 @@ export class SyncService {
     let pushedCount = 0;
 
     try {
-      // 1. Drain offline queue first (Push)
+      // 1. Drain offline queue first (Push all pending INSERTs, UPDATEs, and DELETEs)
       const queue = await this.storage.getSyncQueue();
       for (const item of queue) {
         const success = await this.processQueueItem(client, user.id, item);
@@ -200,33 +231,22 @@ export class SyncService {
         }
       }
 
-      // 2. Also ensure all local sessions, targets, and categories are saved in Supabase
-      const localCats = await this.storage.getCategories();
-      for (const cat of localCats) {
-        await client.from('categories').upsert(this.mapToDbColumns('categories', { ...cat, user_id: user.id }));
+      // 2. One-time initial push for existing offline data (ONLY on very first login if remote is empty)
+      const initialMigrationDone = await this.storage.getSetting<boolean>(`cloud_initial_migration_done_${user.id}`);
+      if (!initialMigrationDone) {
+        const { count: remoteCatCount } = await client
+          .from('categories')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id);
+
+        // Only upload local data if this account has no categories yet in Supabase
+        if (!remoteCatCount || remoteCatCount === 0) {
+          await this.initialPushLocal(client, user.id);
+        }
+        await this.storage.setSetting(`cloud_initial_migration_done_${user.id}`, true);
       }
 
-      const localSessions = await this.storage.getSessions();
-      for (const s of localSessions) {
-        await client.from('sessions').upsert(this.mapToDbColumns('sessions', { ...s, user_id: user.id }));
-      }
-
-      const localTargets = await this.storage.getTargets();
-      for (const t of localTargets) {
-        await client.from('weekly_targets').upsert(
-          this.mapToDbColumns('weekly_targets', { ...t, user_id: user.id }),
-          { onConflict: 'user_id, category_id, week_start_date' }
-        );
-      }
-
-      const localGame = await this.storage.getGamificationState(user.id);
-      if (localGame) {
-        await client.from('gamification_state').upsert(
-          this.mapToDbColumns('gamification_state', { ...localGame, user_id: user.id })
-        );
-      }
-
-      // 3. Pull remote changes
+      // 3. Pull remote changes AND reconcile deletions
       await this.pullRemoteChanges(client, user.id);
 
       this.lastSyncedAt = new Date().toISOString();
@@ -235,12 +255,63 @@ export class SyncService {
       await this.notify();
       this.notifySyncComplete();
 
+      if (this.syncPending) {
+        this.syncPending = false;
+        return this.syncAll();
+      }
+
       return { success: true, pushed: pushedCount, error: null };
     } catch (err: any) {
       this.lastError = err?.message || 'Unknown sync error';
       this.isSyncing = false;
       await this.notify();
+
+      if (this.syncPending) {
+        this.syncPending = false;
+        setTimeout(() => this.syncAll(), 1500);
+      }
+
       return { success: false, pushed: pushedCount, error: this.lastError };
+    }
+  }
+
+  /**
+   * Only called ONCE EVER when a user first signs in, to migrate any offline data
+   * created before an account existed. Only pushes items that are NOT marked deleted.
+   */
+  private async initialPushLocal(client: SupabaseClient, userId: string): Promise<void> {
+    const deletedSessionIds = await this.storage.getDeletedIds('sessions');
+    const localSessions = await this.storage.getSessions();
+    for (const s of localSessions) {
+      if (!deletedSessionIds.has(s.id)) {
+        await client.from('sessions').upsert(this.mapToDbColumns('sessions', { ...s, user_id: userId }));
+      }
+    }
+
+    const deletedCatIds = await this.storage.getDeletedIds('categories');
+    const localCats = await this.storage.getCategories();
+    for (const cat of localCats) {
+      if (!deletedCatIds.has(cat.id)) {
+        await client.from('categories').upsert(this.mapToDbColumns('categories', { ...cat, user_id: userId }));
+      }
+    }
+
+    const deletedTargetIds = await this.storage.getDeletedIds('weekly_targets');
+    const localTargets = await this.storage.getTargets();
+    for (const t of localTargets) {
+      if (!deletedTargetIds.has(t.id)) {
+        await client.from('weekly_targets').upsert(
+          this.mapToDbColumns('weekly_targets', { ...t, user_id: userId }),
+          { onConflict: 'user_id, category_id, week_start_date' }
+        );
+      }
+    }
+
+    const localGame = await this.storage.getGamificationState(userId);
+    if (localGame) {
+      await client.from('gamification_state').upsert(
+        this.mapToDbColumns('gamification_state', { ...localGame, user_id: userId })
+      );
     }
   }
 
@@ -279,76 +350,154 @@ export class SyncService {
   }
 
   private async pullRemoteChanges(client: SupabaseClient, userId: string): Promise<void> {
-    // Pull categories
+    const queue = await this.storage.getSyncQueue();
+    const deletedSessionIds = await this.storage.getDeletedIds('sessions');
+    const deletedCatIds = await this.storage.getDeletedIds('categories');
+    const deletedTargetIds = await this.storage.getDeletedIds('weekly_targets');
+
+    // ── Categories ──
     const { data: remoteCats, error: catErr } = await client
       .from('categories')
       .select('*')
       .eq('user_id', userId);
 
-    if (!catErr && remoteCats && remoteCats.length > 0) {
+    if (!catErr && remoteCats) {
+      const remoteIdSet = new Set(remoteCats.map((r: any) => r.id));
       const localCats = await this.storage.getCategories();
-      const localMap = new Map(localCats.map((c) => [c.id, c]));
+      const pendingCatInserts = new Set(
+        queue.filter((q) => q.table === 'categories' && q.operation === 'INSERT').map((q) => q.payload.id)
+      );
+      const pendingCatDeletes = new Set(
+        queue.filter((q) => q.table === 'categories' && q.operation === 'DELETE').map((q) => q.payload.id)
+      );
 
+      // Upsert remote → local (skipping anything marked deleted)
       for (const rc of remoteCats) {
+        if (deletedCatIds.has(rc.id) || pendingCatDeletes.has(rc.id)) {
+          // If remote still has an item deleted locally, ensure remote delete
+          await client.from('categories').delete().eq('id', rc.id).eq('user_id', userId);
+          continue;
+        }
         const mapped = this.mapFromDbColumns('categories', rc);
-        const local = localMap.get(mapped.id);
+        const local = localCats.find((c) => c.id === mapped.id);
         if (!local || new Date(mapped.updatedAt || 0) > new Date(local.updatedAt || 0)) {
           await this.storage.saveCategory(mapped);
         }
       }
+
+      // Reconcile: delete local items that were deleted remotely
+      if (remoteCats.length > 0) {
+        for (const lc of localCats) {
+          if (!remoteIdSet.has(lc.id) && !pendingCatInserts.has(lc.id)) {
+            await this.storage.recordDeletedId('categories', lc.id);
+            await this.storage.deleteCategory(lc.id);
+          }
+        }
+      }
     }
 
-    // Pull sessions
+    // ── Sessions ──
     const { data: remoteSessions, error: sessErr } = await client
       .from('sessions')
       .select('*')
       .eq('user_id', userId);
 
-    if (!sessErr && remoteSessions && remoteSessions.length > 0) {
+    if (!sessErr && remoteSessions) {
+      const remoteIdSet = new Set(remoteSessions.map((r: any) => r.id));
       const localSessions = await this.storage.getSessions();
-      const localMap = new Map(localSessions.map((s) => [s.id, s]));
+      const pendingSessionInserts = new Set(
+        queue.filter((q) => q.table === 'sessions' && q.operation === 'INSERT').map((q) => q.payload.id)
+      );
+      const pendingSessionDeletes = new Set(
+        queue.filter((q) => q.table === 'sessions' && q.operation === 'DELETE').map((q) => q.payload.id)
+      );
 
+      // Upsert remote → local (strictly skipping deleted sessions!)
       for (const rs of remoteSessions) {
+        if (deletedSessionIds.has(rs.id) || pendingSessionDeletes.has(rs.id)) {
+          // Deleted locally: purge from remote and never restore locally!
+          await client.from('sessions').delete().eq('id', rs.id).eq('user_id', userId);
+          continue;
+        }
         const mapped = this.mapFromDbColumns('sessions', rs);
-        const local = localMap.get(mapped.id);
+        const local = localSessions.find((s) => s.id === mapped.id);
         if (!local || new Date(mapped.updatedAt || 0) > new Date(local.updatedAt || 0)) {
           await this.storage.saveSession(mapped);
         }
       }
+
+      // Reconcile deletions: remove local sessions that were deleted remotely
+      for (const ls of localSessions) {
+        if (!remoteIdSet.has(ls.id) && !pendingSessionInserts.has(ls.id)) {
+          await this.storage.recordDeletedId('sessions', ls.id);
+          await this.storage.deleteSession(ls.id);
+        }
+      }
     }
 
-    // Pull weekly targets
+    // ── Weekly targets ──
     const { data: remoteTargets, error: targetErr } = await client
       .from('weekly_targets')
       .select('*')
       .eq('user_id', userId);
 
-    if (!targetErr && remoteTargets && remoteTargets.length > 0) {
+    if (!targetErr && remoteTargets) {
+      const remoteIdSet = new Set(remoteTargets.map((r: any) => r.id));
       const localTargets = await this.storage.getTargets();
-      const localMap = new Map(localTargets.map((t) => [t.id, t]));
+      const pendingTargetInserts = new Set(
+        queue.filter((q) => q.table === 'weekly_targets' && q.operation === 'INSERT').map((q) => q.payload.id)
+      );
+      const pendingTargetDeletes = new Set(
+        queue.filter((q) => q.table === 'weekly_targets' && q.operation === 'DELETE').map((q) => q.payload.id)
+      );
 
       for (const rt of remoteTargets) {
+        if (deletedTargetIds.has(rt.id) || pendingTargetDeletes.has(rt.id)) {
+          await client.from('weekly_targets').delete().eq('id', rt.id).eq('user_id', userId);
+          continue;
+        }
         const mapped = this.mapFromDbColumns('weekly_targets', rt);
-        const local = localMap.get(mapped.id);
+        const local = localTargets.find((t) => t.id === mapped.id);
         if (!local || new Date(mapped.updatedAt || 0) > new Date(local.updatedAt || 0)) {
           await this.storage.saveTarget(mapped);
         }
       }
+
+      for (const lt of localTargets) {
+        if (!remoteIdSet.has(lt.id) && !pendingTargetInserts.has(lt.id)) {
+          await this.storage.recordDeletedId('weekly_targets', lt.id);
+          await this.storage.deleteTarget(lt.id);
+        }
+      }
     }
 
-    // Pull gamification state
+    // ── Gamification state ──
+    const localGame = await this.storage.getGamificationState(userId);
     const { data: remoteGamification, error: gameErr } = await client
       .from('gamification_state')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (!gameErr && remoteGamification) {
       const mapped = this.mapFromDbColumns('gamification_state', remoteGamification);
-      const local = await this.storage.getGamificationState(userId);
-      if (!local || new Date(mapped.updatedAt) > new Date(local.updatedAt)) {
+      if (!localGame) {
         await this.storage.saveGamificationState(mapped);
+      } else {
+        const remoteUpdated = new Date(mapped.updatedAt || 0).getTime();
+        const localUpdated = new Date(localGame.updatedAt || 0).getTime();
+        if (mapped.xp > localGame.xp || (mapped.xp === localGame.xp && remoteUpdated > localUpdated)) {
+          await this.storage.saveGamificationState(mapped);
+        } else if (localGame.xp > mapped.xp || localUpdated > remoteUpdated) {
+          await client.from('gamification_state').upsert(
+            this.mapToDbColumns('gamification_state', { ...localGame, user_id: userId })
+          );
+        }
       }
+    } else if (localGame) {
+      await client.from('gamification_state').upsert(
+        this.mapToDbColumns('gamification_state', { ...localGame, user_id: userId })
+      );
     }
   }
 
@@ -383,6 +532,7 @@ export class SyncService {
         category_id: obj.categoryId,
         target_hours: obj.targetHours,
         week_start_date: obj.weekStartDate,
+        updated_at: obj.updatedAt || new Date().toISOString(),
       };
     }
     if (table === 'gamification_state') {

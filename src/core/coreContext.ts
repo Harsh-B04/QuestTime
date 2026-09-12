@@ -113,6 +113,7 @@ export class AppCore {
   public async deleteCategory(id: string): Promise<void> {
     this.categories = this.categories.filter((c) => c.id !== id);
     await this.storage.deleteCategory(id);
+    await this.storage.recordDeletedId('categories', id);
     await this.sync.queueChange('categories', 'DELETE', { id });
     this.notifyCategories();
   }

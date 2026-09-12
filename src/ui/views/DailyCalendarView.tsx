@@ -350,40 +350,40 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
       </div>
 
       {/* Gamified Hero Card: Work Done vs Work Left on Selected Day */}
-      <div className="relative glass-panel rounded-3xl p-6 sm:p-8 border-indigo-500/30 overflow-hidden">
+      <div className="relative glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-8 border-indigo-500/30 overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-              <CalendarIcon className="w-4 h-4 text-indigo-400" />
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400" />
               <span>{getDayHeading(selectedDateStr)}</span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
-              {selectedDayDoneHours} <span className="text-base text-slate-400 font-normal">hrs done</span>
-              <span className="text-slate-500 mx-2">/</span>
+            <h3 className="text-xl sm:text-3xl font-extrabold text-white font-mono">
+              {selectedDayDoneHours} <span className="text-sm sm:text-base text-slate-400 font-normal">hrs done</span>
+              <span className="text-slate-500 mx-1.5 sm:mx-2">/</span>
               <span className="text-indigo-300">{dailyGoalHours} hrs goal</span>
             </h3>
 
             <div className="flex items-center gap-2 mt-2">
               {isSelectedDayCompleted ? (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Daily Quest Conquered! (+50 XP bonus eligible)</span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] sm:text-xs font-bold border border-emerald-500/30">
+                  <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
+                  <span>Daily Quest Conquered! (+50 XP)</span>
                 </div>
               ) : (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 text-xs font-semibold border border-amber-500/30">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{selectedDayLeftHours} hrs left to complete today's quest</span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-amber-500/15 text-amber-300 text-[11px] sm:text-xs font-semibold border border-amber-500/30">
+                  <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 shrink-0" />
+                  <span>{selectedDayLeftHours} hrs left today</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* Big Circular Progress Indicator */}
-          <div className="flex items-center gap-4 self-center md:self-auto">
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+          <div className="flex items-center gap-3 sm:gap-4 self-center md:self-auto">
+            <div className="relative w-20 h-20 sm:w-28 sm:h-28 flex items-center justify-center shrink-0">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                 <circle
                   cx="50"
@@ -408,10 +408,10 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
                 />
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-xl sm:text-2xl font-black text-white font-mono leading-none">
+                <span className="text-lg sm:text-2xl font-black text-white font-mono leading-none">
                   {selectedDayProgressPct}%
                 </span>
-                <span className="text-[10px] uppercase font-bold text-slate-400 mt-0.5">
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-400 mt-0.5">
                   {isSelectedDayCompleted ? 'Done' : 'Paced'}
                 </span>
               </div>
@@ -420,20 +420,20 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
             {selectedDateStr === todayStr && onSwitchToTimer && (
               <button
                 onClick={onSwitchToTimer}
-                className="hidden sm:flex flex-col items-center justify-center gap-1.5 p-4 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 transition active:scale-95"
+                className="flex flex-col items-center justify-center gap-1 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 transition active:scale-95 select-none"
               >
-                <div className="flex items-center gap-1">
-                  <span>Start Focus</span>
+                <div className="flex items-center gap-1 font-bold">
+                  <span>Focus</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[10px] text-indigo-200 font-normal">Knock out remaining time</span>
+                <span className="text-[9px] sm:text-[10px] text-indigo-200 font-normal hidden sm:inline">Knock out remaining</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Linear Progress Bar */}
-        <div className="w-full h-3 rounded-full bg-slate-800/80 overflow-hidden p-0.5 border border-white/5">
+        <div className="w-full h-2 sm:h-3 rounded-full bg-slate-800/80 overflow-hidden p-0.5 border border-white/5">
           <div
             className={`h-full rounded-full transition-all duration-700 ${
               isSelectedDayCompleted
@@ -446,31 +446,31 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
       </div>
 
       {/* Interactive Month Calendar Grid */}
-      <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-white/10">
-        <div className="flex items-center justify-between mb-4">
+      <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-6 border border-white/10">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5 text-indigo-400" />
-            <h3 className="text-lg font-bold text-white tracking-tight">
+            <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
               {monthNames[month]} {year}
             </h3>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             <button
               onClick={handleTodayJump}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition"
+              className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition"
             >
               Today
             </button>
             <button
               onClick={handlePrevMonth}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition active:scale-95"
+              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition active:scale-95"
               aria-label="Previous Month"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={handleNextMonth}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition active:scale-95"
+              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition active:scale-95"
               aria-label="Next Month"
             >
               <ChevronRight className="w-4 h-4" />
@@ -479,7 +479,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
         </div>
 
         {/* Days of Week Header */}
-        <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+        <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
           <span>Mon</span>
           <span>Tue</span>
           <span>Wed</span>
@@ -490,7 +490,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
         </div>
 
         {/* 7-column Calendar Cells */}
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
           {calendarGrid.map((cell) => {
             const isSelected = cell.dateStr === selectedDateStr;
 
@@ -498,7 +498,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
               <button
                 key={cell.dateStr}
                 onClick={() => setSelectedDateStr(cell.dateStr)}
-                className={`relative min-h-[64px] sm:min-h-[76px] p-2 rounded-2xl flex flex-col justify-between items-center transition-all border ${
+                className={`relative min-h-[58px] sm:min-h-[76px] p-1 sm:p-2 rounded-xl sm:rounded-2xl flex flex-col justify-between items-center transition-all border select-none ${
                   cell.isGoalMet
                     ? 'bg-emerald-950/40 border-emerald-500/40 hover:bg-emerald-900/50'
                     : cell.doneSec > 0
@@ -513,7 +513,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
                 {/* Header: Day number & Goal Checkmark */}
                 <div className="w-full flex items-center justify-between">
                   <span
-                    className={`text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+                    className={`text-[11px] sm:text-xs font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center ${
                       cell.isToday
                         ? 'bg-indigo-500 text-white'
                         : isSelected
@@ -524,30 +524,30 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
                     {cell.dayNumber}
                   </span>
                   {cell.isGoalMet ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400 shrink-0" />
                   ) : cell.doneSec > 0 ? (
-                    <span className="text-[10px] font-mono text-indigo-300 font-bold hidden sm:inline">
+                    <span className="text-[9px] sm:text-[10px] font-mono text-indigo-300 font-bold hidden sm:inline">
                       {cell.doneHours}h
                     </span>
                   ) : null}
                 </div>
 
                 {/* Category Color Dots */}
-                <div className="flex items-center justify-center gap-1 w-full my-1">
-                  {cell.categoryColors.slice(0, 4).map((c, i) => (
+                <div className="flex items-center justify-center gap-0.5 sm:gap-1 w-full my-0.5 sm:my-1">
+                  {cell.categoryColors.slice(0, 3).map((c, i) => (
                     <span
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      className="w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: c }}
                     />
                   ))}
-                  {cell.categoryColors.length > 4 && (
-                    <span className="text-[8px] text-slate-400 font-bold">+</span>
+                  {cell.categoryColors.length > 3 && (
+                    <span className="text-[7px] sm:text-[8px] text-slate-400 font-bold">+</span>
                   )}
                 </div>
 
                 {/* Bottom Mini Progress Bar */}
-                <div className="w-full h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
+                <div className="w-full h-1 sm:h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
                   <div
                     className={`h-full rounded-full ${
                       cell.isGoalMet ? 'bg-emerald-400' : 'bg-indigo-500'

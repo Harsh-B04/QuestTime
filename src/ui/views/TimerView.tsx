@@ -208,11 +208,11 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       </div>
 
       {/* Category Selection Pills */}
-      <div className="w-full mb-8">
-        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">
+      <div className="w-full mb-6 sm:mb-8">
+        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2.5 text-center">
           Focus Category
         </label>
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1 justify-start sm:justify-center">
           {categories.map((cat) => {
             const isSelected = cat.id === selectedCategoryId;
             return (
@@ -225,17 +225,17 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
                   backgroundColor: isSelected ? `${cat.color}22` : 'rgba(15, 23, 42, 0.45)',
                   boxShadow: isSelected ? `0 0 15px ${cat.color}33` : 'none',
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-2xl border text-sm font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-200 ${
                   isSelected
                     ? 'text-white scale-105 ring-1'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                 } ${timerStatus !== 'idle' && !isSelected ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <div
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: cat.color }}
                 />
-                <CategoryIcon name={cat.icon} className="w-4 h-4" />
+                <CategoryIcon name={cat.icon} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>{cat.name}</span>
               </button>
             );
@@ -244,10 +244,10 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       </div>
 
       {/* Modern Circular Zen/Cyber Timer Face */}
-      <div className="relative mb-8 flex items-center justify-center">
+      <div className="relative mb-6 sm:mb-8 flex items-center justify-center">
         {/* Glowing backdrop aura */}
         <div
-          className={`absolute w-72 h-72 sm:w-84 sm:h-84 rounded-full blur-3xl transition-all duration-1000 pointer-events-none ${
+          className={`absolute w-64 h-64 sm:w-80 sm:h-80 rounded-full blur-3xl transition-all duration-1000 pointer-events-none ${
             timerStatus === 'running'
               ? 'opacity-75 scale-110'
               : timerStatus === 'paused'
@@ -261,7 +261,7 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
 
         {/* Central Circular Dial with SVG Progress Track */}
         <div
-          className={`relative w-72 h-72 sm:w-84 sm:h-84 rounded-full flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-2xl shadow-2xl transition-all duration-500 border ${
+          className={`relative w-[268px] h-[268px] sm:w-80 sm:h-80 rounded-full flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-2xl shadow-2xl transition-all duration-500 border ${
             timerStatus === 'running' ? 'timer-active-glow' : ''
           }`}
           style={{
@@ -300,7 +300,7 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           {/* Category Chip in Center Dial */}
           {activeCategory && (
             <div
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-3 shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-0.5 sm:py-1 rounded-full text-xs font-bold mb-2 sm:mb-3 shadow-sm"
               style={{
                 backgroundColor: `${activeCategory.color}25`,
                 color: activeCategory.color,
@@ -313,11 +313,11 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           )}
 
           {/* Large Tabular Monospace Digits */}
-          <div className="flex items-baseline font-mono text-5xl sm:text-6xl font-extrabold tracking-tight text-white mb-2 tabular-nums">
+          <div className="flex items-baseline font-mono text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-2 tabular-nums">
             <span>{time.hours}</span>
-            <span className="text-slate-500 mx-1">:</span>
+            <span className="text-slate-500 mx-0.5 sm:mx-1">:</span>
             <span>{time.minutes}</span>
-            <span className="text-slate-500 mx-1">:</span>
+            <span className="text-slate-500 mx-0.5 sm:mx-1">:</span>
             <span
               style={{ color: activeCategory?.color || '#818cf8' }}
               className="drop-shadow-[0_0_12px_rgba(99,102,241,0.5)]"
@@ -327,7 +327,7 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           </div>
 
           {/* Status badge */}
-          <div className="text-xs font-bold uppercase tracking-widest text-slate-400">
+          <div className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-slate-400">
             {timerStatus === 'running' ? (
               <span className="text-emerald-400 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
@@ -346,7 +346,7 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       </div>
 
       {/* Note Input */}
-      <div className="w-full max-w-sm mb-6">
+      <div className="w-full max-w-sm mb-5 sm:mb-6 px-1">
         <input
           type="text"
           value={note}
@@ -357,18 +357,18 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
             }
           }}
           placeholder="What are you working on? (optional)"
-          className="w-full px-4 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-inner"
+          className="w-full px-4 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition shadow-inner"
         />
       </div>
 
       {/* Tactile Controls Bar */}
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center justify-center gap-2 sm:gap-4 mb-6 sm:mb-8 w-full max-w-sm px-1">
         {timerStatus === 'idle' && (
           <button
             onClick={handleStart}
-            className="flex items-center gap-3 px-10 py-4 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-lg shadow-xl shadow-indigo-500/30 transition transform hover:-translate-y-0.5 active:scale-95"
+            className="w-full flex items-center justify-center gap-2.5 sm:gap-3 px-8 sm:px-10 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-base sm:text-lg shadow-xl shadow-indigo-500/30 transition transform hover:-translate-y-0.5 active:scale-95 select-none"
           >
-            <Play className="w-6 h-6 fill-current" />
+            <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
             <span>Start Focus</span>
           </button>
         )}
@@ -377,24 +377,24 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           <>
             <button
               onClick={handlePause}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold border border-amber-500/30 shadow-lg transition active:scale-95"
+              className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-3 sm:py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs sm:text-sm border border-amber-500/30 shadow-lg transition active:scale-95 select-none"
             >
-              <Pause className="w-5 h-5 fill-current" />
+              <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               <span>Pause</span>
             </button>
             <button
               onClick={handleStop}
-              className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/30 transition active:scale-95"
+              className="flex-[1.4] flex items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-3 sm:py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition active:scale-95 select-none"
             >
-              <Square className="w-5 h-5 fill-current" />
+              <Square className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               <span>Done & Log</span>
             </button>
             <button
               onClick={() => setShowDiscardConfirm(true)}
-              className="p-3.5 rounded-2xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition"
+              className="p-3 sm:p-3.5 rounded-2xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition shrink-0 select-none"
               title="Discard session"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </>
         )}
@@ -403,24 +403,24 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           <>
             <button
               onClick={handleResume}
-              className="flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold shadow-lg transition active:scale-95"
+              className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-7 py-3 sm:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs sm:text-sm shadow-lg transition active:scale-95 select-none"
             >
-              <Play className="w-5 h-5 fill-current" />
+              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               <span>Resume</span>
             </button>
             <button
               onClick={handleStop}
-              className="flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/30 transition active:scale-95"
+              className="flex-[1.4] flex items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-7 py-3 sm:py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition active:scale-95 select-none"
             >
-              <Square className="w-5 h-5 fill-current" />
+              <Square className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               <span>Done & Log</span>
             </button>
             <button
               onClick={() => setShowDiscardConfirm(true)}
-              className="p-3.5 rounded-2xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition"
+              className="p-3 sm:p-3.5 rounded-2xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition shrink-0 select-none"
               title="Discard session"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </>
         )}

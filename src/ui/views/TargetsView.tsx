@@ -58,28 +58,28 @@ export const TargetsView: React.FC = () => {
       </div>
 
       {/* Aggregated Week Card */}
-      <div className="glass-panel rounded-3xl p-6 mb-8 relative overflow-hidden">
+      <div className="glass-panel rounded-3xl p-5 sm:p-6 mb-6 sm:mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
           <div>
-            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-1">
-              <Target className="w-4 h-4" />
-              <span>Current Week Progress (Starting {weekStartDate})</span>
+            <div className="flex items-center gap-1.5 text-indigo-400 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-1">
+              <Target className="w-3.5 h-3.5" />
+              <span>Week Starting {weekStartDate}</span>
             </div>
-            <div className="text-3xl font-extrabold text-white font-mono">
+            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
               {aggregated.totalLoggedHours} / {aggregated.totalTargetHours} hrs
             </div>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-800/80 border border-slate-700">
-            <TrendingUp className="w-5 h-5 text-indigo-400" />
-            <span className="text-2xl font-bold text-white font-mono">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-slate-800/80 border border-slate-700 shrink-0">
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
+            <span className="text-xl sm:text-2xl font-bold text-white font-mono">
               {aggregated.overallProgressPct}%
             </span>
           </div>
         </div>
 
         {/* Global Progress Bar */}
-        <div className="w-full h-3.5 rounded-full bg-slate-800 overflow-hidden">
+        <div className="w-full h-3 rounded-full bg-slate-800 overflow-hidden">
           <div
             className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-500"
             style={{ width: `${Math.min(100, aggregated.overallProgressPct)}%` }}
@@ -88,7 +88,7 @@ export const TargetsView: React.FC = () => {
       </div>
 
       {/* Category Targets Grid */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {categories.map((cat) => {
           const target = appCore.targetTracker.getTargetForCategory(cat.id, weekStartDate);
           const targetHours = target ? target.targetHours : 0;
@@ -101,43 +101,43 @@ export const TargetsView: React.FC = () => {
           return (
             <div
               key={cat.id}
-              className="glass-card rounded-2xl p-5 border hover:border-slate-600/60 transition"
+              className="glass-card rounded-2xl p-4 sm:p-5 border hover:border-slate-600/60 transition"
               style={{
                 borderColor: targetHours > 0 ? `${cat.color}30` : undefined,
               }}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
                 {/* Category info */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-md"
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 shadow-md"
                     style={{
                       backgroundColor: `${cat.color}20`,
                       color: cat.color,
                     }}
                   >
-                    <CategoryIcon name={cat.icon} className="w-6 h-6" />
+                    <CategoryIcon name={cat.icon} className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">{cat.name}</h3>
-                    <div className="flex items-center gap-2 text-xs mt-0.5">
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-bold text-white truncate">{cat.name}</h3>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] sm:text-xs mt-0.5">
                       <span className="font-mono text-slate-300 font-semibold">
-                        {loggedHours} hrs logged
+                        {loggedHours}h logged
                       </span>
                       {targetHours > 0 && (
                         <>
                           <span className="text-slate-600">•</span>
                           {isCompleted ? (
                             <span className="text-emerald-400 font-medium flex items-center gap-1">
-                              <CheckCircle className="w-3.5 h-3.5" /> Target Met!
+                              <CheckCircle className="w-3 h-3" /> Met!
                             </span>
                           ) : isOnTrack ? (
                             <span className="text-indigo-400 font-medium flex items-center gap-1">
-                              <TrendingUp className="w-3.5 h-3.5" /> On Pace
+                              <TrendingUp className="w-3 h-3" /> On Pace
                             </span>
                           ) : (
                             <span className="text-amber-400 font-medium flex items-center gap-1">
-                              <AlertCircle className="w-3.5 h-3.5" /> Behind Pace
+                              <AlertCircle className="w-3 h-3" /> Behind
                             </span>
                           )}
                         </>
@@ -147,10 +147,10 @@ export const TargetsView: React.FC = () => {
                 </div>
 
                 {/* Target Hours Stepper */}
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <div className="text-right mr-2">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">
-                      Weekly Goal
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold block">
+                      Goal
                     </span>
                     <div className="flex items-baseline justify-end gap-1">
                       <input
@@ -159,26 +159,26 @@ export const TargetsView: React.FC = () => {
                         max="168"
                         value={targetHours}
                         onChange={(e) => handleSetTargetDirect(cat.id, Number(e.target.value))}
-                        className="w-16 px-2 py-1 text-right font-mono font-bold text-base text-white bg-slate-800 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500"
+                        className="w-12 sm:w-16 px-1.5 py-1 text-right font-mono font-bold text-sm sm:text-base text-white bg-slate-800 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500"
                       />
-                      <span className="text-xs text-slate-400">hrs</span>
+                      <span className="text-[11px] sm:text-xs text-slate-400">h</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                  <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-800 p-0.5 sm:p-1 rounded-xl border border-slate-700">
                     <button
                       onClick={() => handleUpdateTargetHours(cat.id, -1)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                      className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
                       title="Decrease 1 hour"
                     >
-                      <Minus className="w-4 h-4" />
+                      <Minus className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => handleUpdateTargetHours(cat.id, 1)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                      className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
                       title="Increase 1 hour"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

@@ -84,6 +84,7 @@ export class TargetTracker {
       if (target.id === id) {
         this.targets.delete(key);
         await this.storage.deleteTarget(id);
+        await this.storage.recordDeletedId('weekly_targets', id);
         this.notify();
         break;
       }

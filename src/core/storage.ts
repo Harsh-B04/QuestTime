@@ -125,7 +125,9 @@ export class StorageService {
   public async getGamificationState(userId: string = 'local-user'): Promise<GamificationStateDTO | null> {
     const db = await this.getDB();
     const result = await db.get('gamification_state', userId);
-    return result || null;
+    if (result) return result;
+    const all = await db.getAll('gamification_state');
+    return all.length > 0 ? all[0] : null;
   }
 
   public async saveGamificationState(state: GamificationStateDTO): Promise<void> {
@@ -169,6 +171,23 @@ export class StorageService {
   public async removeSetting(key: string): Promise<void> {
     const db = await this.getDB();
     await db.delete('key_val', key);
+  }
+
+  // --- Deleted Item Tombstones ---
+  public async getDeletedIds(table?: string): Promise<Set<string>> {
+    const records = (await this.getSetting<Array<{ id: string; table: string; timestamp: number }>>('deleted_item_tombstones')) || [];
+    if (table) {
+      return new Set(records.filter((r) => r.table === table).map((r) => r.id));
+    }
+    return new Set(records.map((r) => r.id));
+  }
+
+  public async recordDeletedId(table: string, id: string): Promise<void> {
+    const records = (await this.getSetting<Array<{ id: string; table: string; timestamp: number }>>('deleted_item_tombstones')) || [];
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days retention
+    const filtered = records.filter((r) => r.timestamp > cutoff && r.id !== id);
+    filtered.push({ id, table, timestamp: Date.now() });
+    await this.setSetting('deleted_item_tombstones', filtered.slice(-1000));
   }
 
   // --- Complete Data Wipe / Reset ---

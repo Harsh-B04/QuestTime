@@ -212,11 +212,11 @@ export const HistoryView: React.FC = () => {
             </div>
 
             {/* Category Filter */}
-            <div className="relative w-full sm:w-auto flex-1 flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+            <div className="relative w-full sm:w-auto flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
               <Filter className="w-4 h-4 text-slate-400 shrink-0 hidden sm:block" />
               <button
                 onClick={() => setSelectedCategoryFilter('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition select-none ${
                   selectedCategoryFilter === 'all'
                     ? 'bg-indigo-500 text-white'
                     : 'bg-slate-800 text-slate-400 hover:text-white'
@@ -228,7 +228,7 @@ export const HistoryView: React.FC = () => {
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategoryFilter(cat.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition select-none ${
                     selectedCategoryFilter === cat.id
                       ? 'bg-slate-700 text-white ring-1'
                       : 'bg-slate-800 text-slate-400 hover:text-white'
@@ -277,29 +277,29 @@ export const HistoryView: React.FC = () => {
                     return (
                       <div
                         key={session.id}
-                        className="glass-panel rounded-2xl p-3.5 flex items-center justify-between gap-3 hover:border-slate-600/80 transition"
+                        className="glass-panel rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 sm:gap-3 hover:border-slate-600/80 transition"
                       >
                         {/* Category & Note */}
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                           <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0"
                             style={{
                               backgroundColor: `${cat?.color || '#6366f1'}20`,
                               color: cat?.color || '#6366f1',
                             }}
                           >
-                            <CategoryIcon name={cat?.icon || 'Clock'} className="w-5 h-5" />
+                            <CategoryIcon name={cat?.icon || 'Clock'} className="w-4 h-4 sm:w-5 sm:h-5" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-white">
+                              <span className="text-sm font-semibold text-white truncate">
                                 {cat?.name || 'Category'}
                               </span>
                             </div>
-                            {/* Time range - prominent */}
+                            {/* Time range - prominent & non-wrapping */}
                             <div className="flex items-center gap-1 mt-0.5">
                               <Clock className="w-3 h-3 text-indigo-400 shrink-0" />
-                              <span className="text-xs font-mono text-indigo-300 font-semibold">
+                              <span className="text-[11px] sm:text-xs font-mono text-indigo-300 font-semibold whitespace-nowrap">
                                 {formatTime(session.startTime)} → {formatTime(session.endTime)}
                               </span>
                             </div>
@@ -312,23 +312,23 @@ export const HistoryView: React.FC = () => {
                         </div>
 
                         {/* Duration & Actions */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono text-sm font-bold text-white px-2.5 py-1 rounded-lg bg-slate-800">
+                        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                          <span className="font-mono text-xs sm:text-sm font-bold text-white px-2 py-1 rounded-lg bg-slate-800 shrink-0">
                             {formatDuration(session.durationSec)}
                           </span>
                           <button
                             onClick={() => startEdit(session)}
-                            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+                            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition active:scale-95"
                             title="Edit entry"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                           <button
                             onClick={() => setShowDeleteModalId(session.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
+                            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition active:scale-95"
                             title="Delete entry"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                         </div>
                       </div>

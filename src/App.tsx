@@ -81,21 +81,21 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#06090e] text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
       {/* Top Header Navbar */}
-      <header className="sticky top-0 z-30 glass-panel border-b border-white/5 px-4 sm:px-8 py-3.5 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 glass-panel border-b border-white/5 px-3.5 sm:px-8 py-2.5 sm:py-3.5 pt-safe backdrop-blur-xl">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           {/* Brand Logo */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('timer')}>
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-              <Clock className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none" onClick={() => setActiveTab('timer')}>
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white">QuestTime</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">QuestTime</span>
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   PWA
                 </span>
               </div>
-              <span className="text-[11px] text-slate-400 block -mt-0.5">Focus & Gamified Targets</span>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block -mt-0.5">Focus & Gamified Targets</span>
             </div>
           </div>
 
@@ -134,7 +134,7 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('progress')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-orange-500/40 text-xs font-semibold transition"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-orange-500/40 text-xs font-semibold transition shrink-0"
             >
               <Flame className="w-4 h-4 text-orange-400 fill-current" />
               <span className="text-white font-mono">{streakCount}d</span>
@@ -144,7 +144,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 pb-24 md:pb-10">
+      <main className="flex-1 pb-28 sm:pb-24 md:pb-10">
         {activeTab === 'timer' && (
           <TimerView onNavigateToCalendar={() => setActiveTab('calendar')} />
         )}
@@ -157,9 +157,9 @@ export const App: React.FC = () => {
         {activeTab === 'settings' && <SettingsView />}
       </main>
 
-      {/* Mobile Bottom Navigation Bar (for Android Chrome / mobile viewports) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 glass-panel border-t border-white/10 px-1.5 py-1.5 backdrop-blur-2xl">
-        <div className="flex items-center justify-around">
+      {/* Mobile Bottom Navigation Bar (Optimized for touch & safe areas) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#070b14]/92 border-t border-white/10 px-1 pt-1 pb-safe backdrop-blur-2xl shadow-2xl">
+        <div className="grid grid-cols-6 items-center max-w-md mx-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -167,14 +167,18 @@ export const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all ${
-                  isActive ? 'text-indigo-400 font-bold scale-105' : 'text-slate-400 hover:text-white'
+                className={`relative flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-colors duration-150 min-h-[46px] select-none active:scale-95 ${
+                  isActive
+                    ? 'text-indigo-400 font-bold bg-indigo-500/10'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                <span className="text-[9px] mt-0.5 tracking-tight">{item.label}</span>
+                <Icon className={`w-4 h-4 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                <span className="text-[10px] mt-1 tracking-tight leading-none truncate max-w-full font-medium">
+                  {item.label}
+                </span>
                 {isActive && (
-                  <span className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-indigo-400" />
+                  <span className="absolute bottom-1 w-1 h-1 rounded-full bg-indigo-400" />
                 )}
               </button>
             );

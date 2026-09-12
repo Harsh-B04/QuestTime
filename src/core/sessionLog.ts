@@ -62,6 +62,7 @@ export class SessionLog {
   public async delete(id: string): Promise<void> {
     this.sessions.delete(id);
     await this.storage.deleteSession(id);
+    await this.storage.recordDeletedId('sessions', id);
     this.notify();
   }
 
