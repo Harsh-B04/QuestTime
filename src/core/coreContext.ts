@@ -85,7 +85,30 @@ export class AppCore {
     // 4. Restore any active running/paused timer from storage
     await this.timer.restoreFromStorage();
 
-    // 5. Connect sync updates to auto-refresh in-memory state
+    // 5. Wire SyncService into Timer for cross-device broadcast
+    //    (done after timer.restoreFromStorage so we don't broadcast the restored state)
+    this.timer.setSyncService(this.sync);
+
+    // 6. Route incoming remote timer states to the local timer
+    this.sync.onRemoteTimerState((state) => {
+      // Only apply remote state if this device doesn't have a locally-started session
+      // (local session wins to prevent accidental overwrites)
+      const localStatus = this.timer.getStatus();
+      const localStart = this.timer.getSessionStartTime();
+      const remoteStart = state.sessionStartTime;
+
+      // If local is idle, always apply remote
+      // If both are running the same session (same sessionStartTime), apply for sync
+      // If local has a DIFFERENT session running, ignore remote (conflict: local wins)
+      const sameSession = localStart && remoteStart && localStart === remoteStart;
+      const localIdle = localStatus === 'idle';
+
+      if (localIdle || sameSession) {
+        this.timer.applyRemoteState(state);
+      }
+    });
+
+    // 7. Connect sync updates to auto-refresh in-memory state
     this.sync.onSyncComplete(async () => {
       await this.reloadFromStorage();
     });

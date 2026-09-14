@@ -176,33 +176,26 @@ export const TargetsView: React.FC = () => {
 
                   {/* Daily Stepper */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="flex items-baseline gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="24"
-                        value={dailyTargetHours}
-                        onChange={(e) => handleSetDailyTargetDirect(cat.id, Number(e.target.value))}
-                        className="w-12 px-1.5 py-0.5 text-right font-mono font-bold text-xs text-white bg-slate-800 rounded-lg border border-slate-700 focus:outline-none focus:border-amber-500"
-                      />
-                      <span className="text-[10px] text-slate-400">h/day</span>
-                    </div>
-                    <div className="flex items-center gap-0.5 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-1 bg-slate-800/80 p-0.5 rounded-xl border border-slate-700">
                       <button
                         onClick={() => handleUpdateDailyTargetHours(cat.id, -0.5)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-90"
                         title="Decrease 0.5 hour"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
+                      <span className="min-w-[2.8rem] text-center font-mono font-bold text-sm text-white tabular-nums select-none">
+                        {dailyTargetHours}
+                      </span>
                       <button
                         onClick={() => handleUpdateDailyTargetHours(cat.id, 0.5)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-90"
                         title="Increase 0.5 hour"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
+                    <span className="text-[10px] text-slate-400">h/day</span>
                   </div>
                 </div>
 
@@ -248,33 +241,26 @@ export const TargetsView: React.FC = () => {
 
                   {/* Weekly Stepper */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="flex items-baseline gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="168"
-                        value={targetHours}
-                        onChange={(e) => handleSetTargetDirect(cat.id, Number(e.target.value))}
-                        className="w-12 sm:w-14 px-1.5 py-0.5 text-right font-mono font-bold text-xs text-white bg-slate-800 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500"
-                      />
-                      <span className="text-[10px] text-slate-400">h/wk</span>
-                    </div>
-                    <div className="flex items-center gap-0.5 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-1 bg-slate-800/80 p-0.5 rounded-xl border border-slate-700">
                       <button
                         onClick={() => handleUpdateTargetHours(cat.id, -1)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-90"
                         title="Decrease 1 hour"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
+                      <span className="min-w-[2.8rem] text-center font-mono font-bold text-sm text-white tabular-nums select-none">
+                        {targetHours}
+                      </span>
                       <button
                         onClick={() => handleUpdateTargetHours(cat.id, 1)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-95"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition active:scale-90"
                         title="Increase 1 hour"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
+                    <span className="text-[10px] text-slate-400">h/wk</span>
                   </div>
                 </div>
 

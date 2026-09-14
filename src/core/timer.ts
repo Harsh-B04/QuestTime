@@ -1,5 +1,6 @@
 import { Session } from './session';
 import { StorageService, type TimerActiveData } from './storage';
+import type { SyncService, TimerBroadcastState } from './sync';
 import type { TimerStatus } from '../types';
 
 export class Timer {
@@ -10,13 +11,20 @@ export class Timer {
   private accumulatedSec: number = 0;
   private sessionStartTime: string | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private tickCount: number = 0;   // used for 10-tick heartbeat
 
   private tickListeners: Set<(elapsedSec: number) => void> = new Set();
   private stateListeners: Set<(status: TimerStatus) => void> = new Set();
   private storage: StorageService;
+  private syncService: SyncService | null = null;  // set after construction via setSyncService()
 
   constructor(storage: StorageService = StorageService.getInstance()) {
     this.storage = storage;
+  }
+
+  /** Called by AppCore once SyncService is ready to avoid circular deps */
+  public setSyncService(sync: SyncService): void {
+    this.syncService = sync;
   }
 
   public onTick(callback: (elapsedSec: number) => void): () => void {
@@ -84,9 +92,7 @@ export class Timer {
 
 
   public start(categoryId: string, note: string = ''): void {
-    if (this.status === 'running') {
-      return;
-    }
+    if (this.status === 'running') return;
 
     this.categoryId = categoryId;
     this.note = note;
@@ -98,6 +104,7 @@ export class Timer {
     this.startTicker();
     this.notifyStateChange();
     this.notifyTick();
+    this.broadcast();
   }
 
   public pause(): void {
@@ -113,6 +120,7 @@ export class Timer {
 
     this.notifyStateChange();
     this.notifyTick();
+    this.broadcast();
   }
 
   public resume(): void {
@@ -124,6 +132,7 @@ export class Timer {
 
     this.notifyStateChange();
     this.notifyTick();
+    this.broadcast();
   }
 
   public stop(): Session | null {
@@ -145,7 +154,7 @@ export class Timer {
       updatedAt: endTime,
     });
 
-    this.reset();
+    this.reset(); // reset() broadcasts 'idle'
     return session;
   }
 
@@ -161,9 +170,11 @@ export class Timer {
     this.startTimestamp = null;
     this.accumulatedSec = 0;
     this.sessionStartTime = null;
+    this.tickCount = 0;
 
     this.notifyStateChange();
     this.notifyTick();
+    this.broadcast(); // tell other devices the timer stopped
   }
 
   public getElapsedSec(): number {
@@ -194,6 +205,7 @@ export class Timer {
   public setNote(note: string): void {
     this.note = note;
     this.persistActiveTimer();
+    this.broadcast();
   }
 
   public getSessionStartTime(): string | null {
@@ -208,7 +220,11 @@ export class Timer {
 
   private startTicker(): void {
     this.stopTicker();
+    this.tickCount = 0;
     this.intervalId = setInterval(() => {
+      this.tickCount++;
+      // Heartbeat every 10s: re-broadcast so devices that join mid-session catch up
+      if (this.tickCount % 10 === 0) this.broadcast();
       this.notifyTick();
     }, 1000);
   }
@@ -218,5 +234,47 @@ export class Timer {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+  }
+
+  /** Serialize current state for broadcast */
+  private toState(): Omit<TimerBroadcastState, 'deviceId'> {
+    return {
+      status: this.status as 'running' | 'paused' | 'idle',
+      categoryId: this.categoryId,
+      startTimestamp: this.startTimestamp,
+      accumulatedSec: this.accumulatedSec,
+      sessionStartTime: this.sessionStartTime,
+      note: this.note,
+    };
+  }
+
+  /** Best-effort broadcast — no-op if sync not wired or user not authenticated */
+  private broadcast(): void {
+    this.syncService?.broadcastTimerState(this.toState());
+  }
+
+  /**
+   * Apply timer state received from another device via Supabase Broadcast.
+   * Does NOT trigger another broadcast to avoid loops.
+   */
+  public applyRemoteState(state: Omit<TimerBroadcastState, 'deviceId'>): void {
+    this.stopTicker();
+
+    this.status = state.status as TimerStatus;
+    this.categoryId = state.categoryId;
+    this.note = state.note;
+    this.startTimestamp = state.startTimestamp;
+    this.accumulatedSec = state.accumulatedSec;
+    this.sessionStartTime = state.sessionStartTime;
+    this.tickCount = 0;
+
+    // Re-start local ticker if the remote timer is running
+    // (local ticker drives the UI — no per-second network calls needed)
+    if (this.status === 'running') this.startTicker();
+
+    this.notifyStateChange();
+    this.notifyTick();
+    // Persist so a page refresh on this device also restores correctly
+    this.persistActiveTimer();
   }
 }

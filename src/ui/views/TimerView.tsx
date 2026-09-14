@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Clock,
   Zap,
+  Monitor,
 } from 'lucide-react';
 import { appCore } from '../../core';
 import type { Category, Session } from '../../core';
@@ -42,6 +43,9 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   const [nudgeDismissed, setNudgeDismissed] = useState<boolean>(false);
   const nudgeDismissedRef = useRef<boolean>(false);
   const [lastCategory, setLastCategory] = useState<Category | null>(null);
+  // True when the running timer was started by a different device
+  const [isRemoteTimer, setIsRemoteTimer] = useState<boolean>(false);
+  const localSessionStartRef = useRef<string | null>(null); // tracks if WE started it
 
   // Sync state with AppCore
   const refreshStats = () => {
@@ -132,6 +136,18 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
     };
   }, [selectedCategoryId]);
 
+  // Track whether the active timer was started locally or remotely
+  // so we can show the "Synced from another device" pill
+  useEffect(() => {
+    const unsubState = appCore.timer.onStateChange((status) => {
+      if (status === 'idle') {
+        setIsRemoteTimer(false);
+        localSessionStartRef.current = null;
+      }
+    });
+    return unsubState;
+  }, []);
+
   const activeCategory = categories.find((c) => c.id === selectedCategoryId) || categories[0];
 
   const handleStart = () => {
@@ -141,6 +157,9 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
     const catId = selectedCategoryId || (categories[0]?.id ?? '');
     sounds.playStart();
     appCore.timer.start(catId, note);
+    // Mark this session as locally-started
+    setIsRemoteTimer(false);
+    localSessionStartRef.current = appCore.timer.getSessionStartTime();
   };
 
   const handlePause = () => {
@@ -177,9 +196,25 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   const handleDiscard = () => {
     appCore.timer.discard();
     setNote('');
+    setIsRemoteTimer(false);
+    localSessionStartRef.current = null;
     setShowDiscardConfirm(false);
     refreshStats();
   };
+
+  // Called by coreContext when a remote timer broadcast arrives and gets applied
+  // We detect "remote" by checking if sessionStartTime changed without a local handleStart
+  useEffect(() => {
+    const unsubTick = appCore.timer.onTick(() => {
+      const currentStart = appCore.timer.getSessionStartTime();
+      const status = appCore.timer.getStatus();
+      if (status !== 'idle' && currentStart && currentStart !== localSessionStartRef.current) {
+        // sessionStartTime exists but wasn't set by our handleStart — it came from remote
+        setIsRemoteTimer(true);
+      }
+    });
+    return unsubTick;
+  }, []);
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -240,6 +275,15 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           </div>
         )}
       </div>
+
+      {/* Remote device live sync indicator */}
+      {isRemoteTimer && timerStatus !== 'idle' && (
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold animate-fade-in">
+          <Monitor className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+          <span>Synced live from another device</span>
+        </div>
+      )}
 
       {/* Category Selection Pills */}
       <div className="w-full mb-6 sm:mb-8">

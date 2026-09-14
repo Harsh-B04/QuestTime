@@ -45,7 +45,6 @@
 
 .glass-card:hover {
   border-color: rgba(255, 255, 255, 0.14);
-  transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
@@ -114,4 +113,26 @@ input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
   box-shadow: 0 0 0 1000px #1e293b inset !important;
   transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ─── Hide native number input spinners (the ugly OS arrows) ─── */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ─── GPU-promote animated elements to prevent jitter ─── */
+.timer-active-glow,
+.animate-fade-in {
+  will-change: transform, opacity;
+}
+
+/* ─── Contain tab panels so switching views can't cause reflow ─── */
+main > * {
+  contain: layout style;
 }

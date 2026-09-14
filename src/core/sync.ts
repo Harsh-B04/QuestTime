@@ -11,6 +11,17 @@ export interface SyncStatus {
   lastError: string | null;
 }
 
+/** Shape broadcast to all other devices when timer state changes */
+export interface TimerBroadcastState {
+  deviceId: string;           // random UUID per tab — prevents echoing back to sender
+  status: 'running' | 'paused' | 'idle';
+  categoryId: string | null;
+  startTimestamp: number | null;  // Date.now() when current run started
+  accumulatedSec: number;
+  sessionStartTime: string | null;
+  note: string;
+}
+
 export class SyncService {
   private static instance: SyncService | null = null;
   private storage: StorageService;
@@ -24,6 +35,12 @@ export class SyncService {
 
   private syncCompleteCallbacks: Set<() => void> = new Set();
   private realtimeChannel: any = null;
+
+  // Live cross-device timer sync via Supabase Broadcast
+  private timerChannel: any = null;
+  private timerStateCallbacks: Set<(state: TimerBroadcastState) => void> = new Set();
+  // Stable per-tab device ID prevents the sender from re-processing its own broadcasts
+  private readonly deviceId: string = crypto.randomUUID();
 
   public static getInstance(
     storage: StorageService = StorageService.getInstance(),
@@ -103,6 +120,7 @@ export class SyncService {
     this.teardownRealtime();
 
     try {
+      // Channel 1: postgres_changes — syncs sessions/categories/targets across devices
       this.realtimeChannel = client
         .channel(`sync_${userId}`)
         .on('postgres_changes', { event: '*', schema: 'public' }, async (payload: any) => {
@@ -125,17 +143,57 @@ export class SyncService {
           }
         })
         .subscribe();
+
+      // Channel 2: Broadcast — live timer state across devices (no DB writes)
+      this.timerChannel = client
+        .channel(`timer_${userId}`)
+        .on('broadcast', { event: 'timer_state' }, ({ payload }: { payload: TimerBroadcastState }) => {
+          // Ignore messages sent by this same tab
+          if (!payload || payload.deviceId === this.deviceId) return;
+          for (const cb of this.timerStateCallbacks) {
+            try { cb(payload); } catch (e) { console.warn('timer broadcast cb error', e); }
+          }
+        })
+        .subscribe();
     } catch (e) {
       console.warn('Realtime channel setup failed:', e);
     }
   }
 
   private teardownRealtime(): void {
+    const client = this.auth.getClient();
     if (this.realtimeChannel) {
-      const client = this.auth.getClient();
       client?.removeChannel(this.realtimeChannel);
       this.realtimeChannel = null;
     }
+    if (this.timerChannel) {
+      client?.removeChannel(this.timerChannel);
+      this.timerChannel = null;
+    }
+  }
+
+  /**
+   * Broadcast current timer state to all other logged-in devices.
+   * No-op if not authenticated or offline.
+   */
+  public broadcastTimerState(state: Omit<TimerBroadcastState, 'deviceId'>): void {
+    if (!this.timerChannel || !this.auth.isAuthenticated()) return;
+    try {
+      this.timerChannel.send({
+        type: 'broadcast',
+        event: 'timer_state',
+        payload: { ...state, deviceId: this.deviceId } satisfies TimerBroadcastState,
+      });
+    } catch (e) {
+      // Non-fatal — broadcast is best-effort
+      console.warn('Timer broadcast failed:', e);
+    }
+  }
+
+  /** Subscribe to remote timer state changes (from other devices). Returns unsub fn. */
+  public onRemoteTimerState(cb: (state: TimerBroadcastState) => void): () => void {
+    this.timerStateCallbacks.add(cb);
+    return () => this.timerStateCallbacks.delete(cb);
   }
 
   public subscribe(callback: (status: SyncStatus) => void): () => void {
