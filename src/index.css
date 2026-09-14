@@ -8,11 +8,6 @@
 
   body {
     background-color: #06090e;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
-    background-attachment: fixed;
     color: #f1f5f9;
     font-family: var(--font-sans);
     min-height: 100vh;
@@ -25,22 +20,38 @@
   }
 }
 
-/* Glassmorphism acrylic panels */
+/* Fixed background aura layer (avoids background-attachment: fixed repaint jitter) */
+.fixed-bg-aura {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+  transform: translateZ(0);
+}
+
+/* Glassmorphism acrylic panels - optimized for GPU compositing */
 .glass-panel {
   background: rgba(13, 18, 30, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transform: translateZ(0);
 }
 
 .glass-card {
   background: rgba(20, 28, 45, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  transform: translateZ(0);
+  will-change: border-color, box-shadow;
 }
 
 .glass-card:hover {
@@ -48,18 +59,19 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
-/* Pulsing Timer Glow */
+/* Pulsing Timer Glow - hardware accelerated */
 @keyframes timer-pulse {
   0%, 100% {
-    box-shadow: 0 0 25px rgba(99, 102, 241, 0.3), 0 0 60px rgba(99, 102, 241, 0.15), inset 0 0 20px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3), inset 0 0 15px rgba(99, 102, 241, 0.2);
   }
   50% {
-    box-shadow: 0 0 45px rgba(99, 102, 241, 0.55), 0 0 90px rgba(99, 102, 241, 0.3), inset 0 0 35px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 35px rgba(99, 102, 241, 0.5), inset 0 0 25px rgba(99, 102, 241, 0.3);
   }
 }
 
 .timer-active-glow {
   animation: timer-pulse 3s infinite ease-in-out;
+  transform: translateZ(0);
 }
 
 /* Smooth fade & slide animations */

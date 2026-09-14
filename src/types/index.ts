@@ -24,6 +24,10 @@ export interface WeeklyTargetDTO {
   categoryId: string;
   targetHours: number;
   dailyTargetHours?: number;
+  isDaily?: boolean; // false if target/event is not daily (defaults to true)
+  targetDays?: number[]; // optional active days: 1=Mon ... 7=Sun
+  dailySchedule?: Record<number, number>; // 1=Mon: 1.5, ..., 7=Sun: 4.0
+  autoSyncWeekly?: boolean; // automatically keep weekly target equal to sum of schedule
   weekStartDate: string; // YYYY-MM-DD representing Monday of that week
   userId?: string;
   updatedAt?: string;

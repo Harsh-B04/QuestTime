@@ -520,6 +520,10 @@ export class SyncService {
           const mergedTarget = {
             ...mapped,
             dailyTargetHours: local?.dailyTargetHours ?? mapped.dailyTargetHours,
+            isDaily: local?.isDaily ?? mapped.isDaily,
+            targetDays: local?.targetDays ?? mapped.targetDays,
+            dailySchedule: local?.dailySchedule ?? mapped.dailySchedule,
+            autoSyncWeekly: local?.autoSyncWeekly ?? mapped.autoSyncWeekly,
           };
           await this.storage.saveTarget(mergedTarget);
         }

@@ -96,6 +96,9 @@ export const App: React.FC = () => {
         '--theme-glow': activeCosmetic.glowColor,
       } as React.CSSProperties}
     >
+      {/* Smooth GPU fixed background */}
+      <div className="fixed-bg-aura" />
+
       {/* Dynamic ambient backdrop aura based on active cosmetic theme */}
       <div 
         className="fixed inset-0 pointer-events-none opacity-20 transition-all duration-700 z-0"

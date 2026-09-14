@@ -56,7 +56,9 @@ export class TargetTracker {
     categoryId: string,
     targetHours: number,
     weekStartDate: string = this.getCurrentWeekStartDate(),
-    dailyTargetHours?: number
+    dailyTargetHours?: number,
+    isDaily?: boolean,
+    targetDays?: number[]
   ): Promise<WeeklyTarget> {
     const key = `${weekStartDate}_${categoryId}`;
     let target = this.targets.get(key);
@@ -66,6 +68,16 @@ export class TargetTracker {
       if (dailyTargetHours !== undefined) {
         target.dailyTargetHours = Math.max(0, dailyTargetHours);
       }
+      if (isDaily !== undefined) {
+        target.isDaily = isDaily;
+      }
+      if (targetDays !== undefined) {
+        target.targetDays = targetDays;
+      }
+      // If manually adjusting weekly target and it diverges from schedule sum, disengage auto-sync
+      if (target.autoSyncWeekly && Math.abs(target.targetHours - target.getScheduledWeeklyHours()) > 0.05) {
+        target.autoSyncWeekly = false;
+      }
       target.updatedAt = new Date().toISOString();
     } else {
       target = new WeeklyTarget({
@@ -73,6 +85,8 @@ export class TargetTracker {
         categoryId,
         targetHours: Math.max(0, targetHours),
         dailyTargetHours: dailyTargetHours !== undefined ? Math.max(0, dailyTargetHours) : undefined,
+        isDaily: isDaily !== undefined ? isDaily : true,
+        targetDays,
         weekStartDate,
         updatedAt: new Date().toISOString(),
       });
@@ -94,6 +108,10 @@ export class TargetTracker {
 
     if (target) {
       target.dailyTargetHours = Math.max(0, dailyHours);
+      target.isDaily = true;
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
       target.updatedAt = new Date().toISOString();
     } else {
       target = new WeeklyTarget({
@@ -101,9 +119,195 @@ export class TargetTracker {
         categoryId,
         targetHours: 0,
         dailyTargetHours: Math.max(0, dailyHours),
+        isDaily: true,
         weekStartDate,
         updatedAt: new Date().toISOString(),
       });
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
+  public async setIsDaily(
+    categoryId: string,
+    isDaily: boolean,
+    weekStartDate: string = this.getCurrentWeekStartDate()
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    if (target) {
+      target.isDaily = isDaily;
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        isDaily,
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
+  public async setDaySchedule(
+    categoryId: string,
+    dailySchedule: Record<number, number>,
+    weekStartDate: string = this.getCurrentWeekStartDate()
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    if (target) {
+      target.dailySchedule = { ...dailySchedule };
+      target.isDaily = true;
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        isDaily: true,
+        dailySchedule: { ...dailySchedule },
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
+  public async setDayTarget(
+    categoryId: string,
+    dayOfWeek: number, // 1=Mon .. 7=Sun
+    hours: number,
+    weekStartDate: string = this.getCurrentWeekStartDate()
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    const baseSchedule: Record<number, number> = target?.dailySchedule
+      ? { ...target.dailySchedule }
+      : {
+          1: target?.dailyTargetHours ?? 0,
+          2: target?.dailyTargetHours ?? 0,
+          3: target?.dailyTargetHours ?? 0,
+          4: target?.dailyTargetHours ?? 0,
+          5: target?.dailyTargetHours ?? 0,
+          6: target?.dailyTargetHours ?? 0,
+          7: target?.dailyTargetHours ?? 0,
+        };
+
+    baseSchedule[dayOfWeek] = Math.max(0, hours);
+
+    if (target) {
+      target.dailySchedule = baseSchedule;
+      target.isDaily = true;
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        isDaily: true,
+        dailySchedule: baseSchedule,
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      if (target.autoSyncWeekly) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
+  public async setAutoSyncWeekly(
+    categoryId: string,
+    autoSync: boolean,
+    weekStartDate: string = this.getCurrentWeekStartDate()
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    if (target) {
+      target.autoSyncWeekly = autoSync;
+      if (autoSync) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        isDaily: true,
+        autoSyncWeekly: autoSync,
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      if (autoSync) {
+        target.targetHours = target.getScheduledWeeklyHours();
+      }
+      this.targets.set(key, target);
+    }
+
+    await this.storage.saveTarget(target.toDTO());
+    this.notify();
+    return target;
+  }
+
+  public async syncWeeklyToSchedule(
+    categoryId: string,
+    weekStartDate: string = this.getCurrentWeekStartDate(),
+    enableAutoSync: boolean = true
+  ): Promise<WeeklyTarget> {
+    const key = `${weekStartDate}_${categoryId}`;
+    let target = this.targets.get(key);
+
+    if (target) {
+      target.isDaily = true;
+      target.autoSyncWeekly = enableAutoSync;
+      target.targetHours = target.getScheduledWeeklyHours();
+      target.updatedAt = new Date().toISOString();
+    } else {
+      target = new WeeklyTarget({
+        id: crypto.randomUUID(),
+        categoryId,
+        targetHours: 0,
+        isDaily: true,
+        autoSyncWeekly: enableAutoSync,
+        weekStartDate,
+        updatedAt: new Date().toISOString(),
+      });
+      target.targetHours = target.getScheduledWeeklyHours();
       this.targets.set(key, target);
     }
 

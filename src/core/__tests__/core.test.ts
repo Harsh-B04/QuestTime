@@ -259,6 +259,50 @@ async function runTests() {
   assert(dailyTarget.isDailyTargetMet(sessionLog) === true, 'Daily target is now met');
   assert(dailyTarget.getRemainingDailyHours(sessionLog) === 0, '0 hours remaining for daily target');
 
+  // Test Non-Daily Target Feature
+  const nonDailyTarget = await targetTracker.setIsDaily('cat-workout', false, '2026-09-07');
+  await targetTracker.setTarget('cat-workout', 5, '2026-09-07', 1, false);
+  assert(nonDailyTarget.isDaily === false, 'Target correctly marked as non-daily');
+  assert(nonDailyTarget.isOnTrack(sessionLog) === true, 'Non-daily target has flexible on-track pacing');
+  assert(nonDailyTarget.getDailyProgressPct(sessionLog) === 0, 'Non-daily target does not calculate daily quest pct');
+  assert(nonDailyTarget.isDailyTargetMet(sessionLog) === false, 'Non-daily target isDailyTargetMet returns false');
+
+  // Switch back to daily
+  await targetTracker.setIsDaily('cat-workout', true, '2026-09-07');
+  const switchedDaily = targetTracker.getTargetForCategory('cat-workout', '2026-09-07');
+  assert(switchedDaily?.isDaily === true, 'Target successfully toggled back to daily');
+
+  // Test Day-Specific Target Schedule Feature (e.g. Sunday 4h, Weekdays 1.5h, Saturday 0h)
+  const scheduledTarget = await targetTracker.setDaySchedule('cat-deepwork', {
+    1: 1.5, // Mon
+    2: 1.5, // Tue
+    3: 1.5, // Wed
+    4: 1.5, // Thu
+    5: 1.5, // Fri
+    6: 0,   // Sat (Rest day)
+    7: 4.0, // Sun (Deep work day)
+  }, '2026-09-07');
+
+  assert(scheduledTarget.dailySchedule !== undefined, 'Target has custom dailySchedule');
+  assert(scheduledTarget.getScheduledWeeklyHours() === 11.5, 'Scheduled weekly hours sum to 11.5h');
+
+  // Mock Sunday: 2026-09-13 (Sunday)
+  const mockSunday = new Date('2026-09-13T10:00:00');
+  assert(scheduledTarget.getTargetHoursForDate(mockSunday) === 4.0, 'Sunday target resolves to 4.0 hours');
+
+  // Mock Monday: 2026-09-07 (Monday)
+  const mockMonday = new Date('2026-09-07T10:00:00');
+  assert(scheduledTarget.getTargetHoursForDate(mockMonday) === 1.5, 'Monday target resolves to 1.5 hours');
+
+  // Mock Saturday: 2026-09-12 (Saturday rest day)
+  const mockSaturday = new Date('2026-09-12T10:00:00');
+  assert(scheduledTarget.getTargetHoursForDate(mockSaturday) === 0, 'Saturday rest day target resolves to 0 hours');
+
+  // Test updating a single day target
+  await targetTracker.setDayTarget('cat-deepwork', 7, 5.0, '2026-09-07');
+  assert(scheduledTarget.getTargetHoursForDate(mockSunday) === 5.0, 'Sunday target updated to 5.0 hours');
+  assert(scheduledTarget.getScheduledWeeklyHours() === 12.5, 'Scheduled weekly hours updated to 12.5h');
+
   // 7. Test Phase 7: Streak Multiplier
   const currentStreak = gameEngine.getState().currentStreak;
   const expectedMult = Number((1 + Math.min(1.0, currentStreak * 0.05)).toFixed(2));
