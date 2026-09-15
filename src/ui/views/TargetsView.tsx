@@ -1,8 +1,22 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Target, CheckCircle, Check, TrendingUp, Plus, Minus, Calendar, ChevronDown, Sparkles } from 'lucide-react';
+import {
+  Target,
+  CheckCircle,
+  Check,
+  TrendingUp,
+  Plus,
+  Minus,
+  Calendar,
+  ChevronDown,
+  Sparkles,
+  Lock,
+  Unlock,
+  ShieldAlert,
+} from 'lucide-react';
 import { appCore } from '../../core';
 import type { Category } from '../../core';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { EmergencyEditModal } from '../components/EmergencyEditModal';
 
 const DAYS_OF_WEEK = [
   { day: 1, name: 'Monday', short: 'Mon' },
@@ -19,6 +33,8 @@ export const TargetsView: React.FC = () => {
   const [expandedCatIds, setExpandedCatIds] = useState<Set<string>>(new Set());
   const [syncedFeedbackCatId, setSyncedFeedbackCatId] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<number>(0);
+  const [lockStatus, setLockStatus] = useState(appCore.targetLockPolicy.canEdit());
+  const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState<boolean>(false);
 
   const forceRefresh = () => setTrigger((t) => t + 1);
 
@@ -32,12 +48,14 @@ export const TargetsView: React.FC = () => {
   };
 
   useEffect(() => {
-    setCategories([...appCore.categories]);
-
     const unsubTargets = appCore.targetTracker.subscribe(forceRefresh);
     const unsubLog = appCore.sessionLog.subscribe(forceRefresh);
     const unsubCats = appCore.onCategoriesChange(() => {
       setCategories([...appCore.categories]);
+      forceRefresh();
+    });
+    const unsubLock = appCore.targetLockPolicy.subscribe(() => {
+      setLockStatus(appCore.targetLockPolicy.canEdit());
       forceRefresh();
     });
 
@@ -45,6 +63,7 @@ export const TargetsView: React.FC = () => {
       unsubTargets();
       unsubLog();
       unsubCats();
+      unsubLock();
     };
   }, []);
 
@@ -52,11 +71,13 @@ export const TargetsView: React.FC = () => {
   
   // Memoize aggregated metrics to avoid repeated full session log scans
   const aggregated = useMemo(() => {
+    void trigger;
     return appCore.targetTracker.getAggregatedProgress(appCore.sessionLog, weekStartDate);
   }, [trigger, weekStartDate]);
 
   // Pre-calculate logged seconds per category for week and today in a single pass
   const { categoryLoggedMap, todayLoggedMap } = useMemo(() => {
+    void trigger;
     const today = new Date();
     const { startOfWeek, endOfWeek } = appCore.sessionLog.getWeekBoundaries(today);
     const startOfDay = new Date(today);
@@ -77,14 +98,25 @@ export const TargetsView: React.FC = () => {
     }
 
     return { categoryLoggedMap: catMap, todayLoggedMap: todayMap };
-  }, [trigger, weekStartDate]);
+  }, [trigger]);
+
+  const checkLockGate = (): boolean => {
+    const status = appCore.targetLockPolicy.canEdit();
+    if (!status.allowed) {
+      setIsEmergencyModalOpen(true);
+      return false;
+    }
+    return true;
+  };
 
   const handleToggleDaily = async (categoryId: string, isDaily: boolean) => {
+    if (!checkLockGate()) return;
     const updated = await appCore.targetTracker.setIsDaily(categoryId, isDaily, weekStartDate);
     await appCore.sync.queueChange('weekly_targets', 'UPDATE', updated.toDTO());
   };
 
   const handleUpdateTargetHours = async (categoryId: string, delta: number) => {
+    if (!checkLockGate()) return;
     const current = appCore.targetTracker.getTargetForCategory(categoryId, weekStartDate);
     const currentHours = current ? current.targetHours : 0;
     const newHours = Math.max(0, currentHours + delta);
@@ -94,6 +126,7 @@ export const TargetsView: React.FC = () => {
   };
 
   const handleUpdateDailyTargetHours = async (categoryId: string, delta: number) => {
+    if (!checkLockGate()) return;
     const current = appCore.targetTracker.getTargetForCategory(categoryId, weekStartDate);
     const currentDaily = current?.dailyTargetHours ?? 0;
     const newDaily = Math.max(0, Number((currentDaily + delta).toFixed(1)));
@@ -103,6 +136,7 @@ export const TargetsView: React.FC = () => {
   };
 
   const handleUpdateDayTarget = async (categoryId: string, dayOfWeek: number, delta: number) => {
+    if (!checkLockGate()) return;
     const current = appCore.targetTracker.getTargetForCategory(categoryId, weekStartDate);
     const currentDayHours = current?.dailySchedule?.[dayOfWeek] ?? current?.dailyTargetHours ?? 0;
     const newHours = Math.max(0, Number((currentDayHours + delta).toFixed(1)));
@@ -112,6 +146,7 @@ export const TargetsView: React.FC = () => {
   };
 
   const handleApplyPreset = async (categoryId: string, type: 'weekdays' | 'weekends', hours: number) => {
+    if (!checkLockGate()) return;
     const current = appCore.targetTracker.getTargetForCategory(categoryId, weekStartDate);
     const baseDaily = current?.dailyTargetHours ?? 0;
     const currentSchedule: Record<number, number> = current?.dailySchedule
@@ -133,6 +168,7 @@ export const TargetsView: React.FC = () => {
   };
 
   const handleAutoSumWeekly = async (categoryId: string) => {
+    if (!checkLockGate()) return;
     const updated = await appCore.targetTracker.syncWeeklyToSchedule(categoryId, weekStartDate, true);
     await appCore.sync.queueChange('weekly_targets', 'UPDATE', updated.toDTO());
     setSyncedFeedbackCatId(categoryId);
@@ -142,6 +178,7 @@ export const TargetsView: React.FC = () => {
   };
 
   const handleToggleAutoSync = async (categoryId: string, autoSync: boolean) => {
+    if (!checkLockGate()) return;
     const updated = await appCore.targetTracker.setAutoSyncWeekly(categoryId, autoSync, weekStartDate);
     await appCore.sync.queueChange('weekly_targets', 'UPDATE', updated.toDTO());
     if (autoSync) {
@@ -160,6 +197,94 @@ export const TargetsView: React.FC = () => {
         <p className="text-sm text-slate-400">
           Set daily quests and weekly targets per category. Both track and update independently from your logged focus time.
         </p>
+      </div>
+
+      {/* Target Locker Status Banner (Anti-Goal Erosion Gate) */}
+      <div
+        className="mb-6 p-4 rounded-3xl border transition-all duration-300 shadow-sm overflow-hidden relative"
+        style={{
+          backgroundColor: lockStatus.allowed
+            ? lockStatus.reason === 'emergency'
+              ? 'rgba(245, 158, 11, 0.08)'
+              : 'rgba(99, 102, 241, 0.08)'
+            : 'rgba(239, 68, 68, 0.08)',
+          borderColor: lockStatus.allowed
+            ? lockStatus.reason === 'emergency'
+              ? 'rgba(245, 158, 11, 0.3)'
+              : 'rgba(99, 102, 241, 0.3)'
+            : 'rgba(239, 68, 68, 0.3)',
+        }}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
+                lockStatus.allowed
+                  ? lockStatus.reason === 'emergency'
+                    ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                    : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400'
+                  : 'bg-rose-500/20 border-rose-500/30 text-rose-400'
+              }`}
+            >
+              {lockStatus.allowed ? (
+                lockStatus.reason === 'emergency' ? (
+                  <ShieldAlert className="w-4 h-4" />
+                ) : (
+                  <Unlock className="w-4 h-4" />
+                )
+              ) : (
+                <Lock className="w-4 h-4" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Target Locker
+                </span>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                    lockStatus.allowed
+                      ? lockStatus.reason === 'emergency'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  }`}
+                >
+                  {lockStatus.allowed
+                    ? lockStatus.reason === 'emergency'
+                      ? 'Emergency Edit Active'
+                      : 'Monday Planning Window'
+                    : 'Locked (Mid-Week)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {lockStatus.allowed
+                  ? lockStatus.reason === 'emergency'
+                    ? '1-session emergency valve active. Adjustments will be logged in target_edit_log.'
+                    : 'Monday planning open. Set your weekly focus goals and Mon–Sun day schedules.'
+                  : `${lockStatus.nextWindowLabel}. Targets are locked to prevent mid-week goal erosion.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {!lockStatus.allowed && !lockStatus.emergencyUsed && (
+              <button
+                onClick={() => setIsEmergencyModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/10 flex items-center gap-1.5 active:scale-95"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Emergency Unlock</span>
+              </button>
+            )}
+
+            {!lockStatus.allowed && lockStatus.emergencyUsed && (
+              <span className="text-[10px] font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-xl">
+                Emergency Edit Used
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Aggregated Week Card */}
@@ -649,6 +774,16 @@ export const TargetsView: React.FC = () => {
           );
         })}
       </div>
+
+      {/* Target Locker Emergency Unlock Modal */}
+      <EmergencyEditModal
+        isOpen={isEmergencyModalOpen}
+        onClose={() => setIsEmergencyModalOpen(false)}
+        onUnlocked={() => {
+          setLockStatus(appCore.targetLockPolicy.canEdit());
+          forceRefresh();
+        }}
+      />
     </div>
   );
 };

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Palette, Check, Sparkles, Lock, ShoppingBag } from 'lucide-react';
+import { Palette, Check, Sparkles, Lock, ShoppingBag, Eye } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { GamificationEngine } from '../../core/gamification';
 import { COSMETIC_SHOP_ITEMS } from '../../core/gamification';
+import type { CosmeticShopItem } from '../../types';
+import { ThemeShowcaseModal } from './ThemeShowcaseModal';
 
 interface BadgeShopProps {
   gamification: GamificationEngine;
@@ -10,10 +12,12 @@ interface BadgeShopProps {
 
 export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showcaseItem, setShowcaseItem] = useState<CosmeticShopItem | null>(null);
   const state = gamification.getState();
   const currentXP = state.xp;
   const unlocked = new Set(gamification.getUnlockedCosmetics());
   const activeCosmetic = gamification.getActiveCosmetic();
+  const trialId = gamification.getTrialCosmeticId();
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -79,7 +83,7 @@ export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Spend focus XP to unlock cybernetic visual themes and color accents.
+              Spend focus XP to unlock cybernetic visual themes and color accents. Tap any theme to inspect & try!
             </p>
           </div>
         </div>
@@ -106,19 +110,22 @@ export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
         {COSMETIC_SHOP_ITEMS.map((item) => {
           const isUnlocked = unlocked.has(item.id);
           const isActive = activeCosmetic.id === item.id;
+          const isTrial = trialId === item.id;
           const canAfford = currentXP >= item.costXP;
 
           return (
             <div
               key={item.id}
               className={`rounded-2xl p-4 transition-all duration-200 border flex flex-col justify-between ${
-                isActive
+                isTrial
+                  ? 'bg-slate-900/90 shadow-lg ring-2 ring-amber-400/50'
+                  : isActive
                   ? 'bg-slate-800/80 shadow-md ring-1'
                   : 'bg-slate-900/50 hover:bg-slate-800/50 border-slate-800'
               }`}
               style={{
-                borderColor: isActive ? item.accentColor : undefined,
-                boxShadow: isActive ? `0 0 20px ${item.glowColor}` : undefined,
+                borderColor: isTrial ? '#f59e0b' : isActive ? item.accentColor : undefined,
+                boxShadow: isTrial ? '0 0 25px rgba(245, 158, 11, 0.4)' : isActive ? `0 0 20px ${item.glowColor}` : undefined,
               }}
             >
               <div>
@@ -126,18 +133,28 @@ export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
                   <div className="flex items-center gap-2.5">
                     {/* Color Swatch Orb */}
                     <div
-                      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center shadow-inner"
+                      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center shadow-inner cursor-pointer hover:scale-110 transition"
+                      onClick={() => setShowcaseItem(item)}
+                      title="Inspect Theme"
                       style={{
                         backgroundColor: item.accentColor,
                         boxShadow: `0 0 10px ${item.glowColor}`,
                       }}
                     >
                       {isActive && <Check className="w-4 h-4 text-slate-950 stroke-[3]" />}
+                      {isTrial && <Eye className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />}
                     </div>
                     <div>
-                      <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                      <h4
+                        onClick={() => setShowcaseItem(item)}
+                        className="text-sm font-semibold text-white flex items-center gap-1.5 cursor-pointer hover:text-indigo-300 transition"
+                      >
                         {item.name}
-                        {isActive && (
+                        {isTrial ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                            TRIAL
+                          </span>
+                        ) : isActive ? (
                           <span 
                             className="text-[10px] font-bold px-1.5 py-0.2 rounded"
                             style={{ 
@@ -147,7 +164,7 @@ export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
                           >
                             ACTIVE
                           </span>
-                        )}
+                        ) : null}
                       </h4>
                     </div>
                   </div>
@@ -176,55 +193,78 @@ export const BadgeShop: React.FC<BadgeShopProps> = ({ gamification }) => {
                 </p>
               </div>
 
-              {/* Action Button */}
-              <div>
-                {isActive ? (
+              {/* Action Buttons Row */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  {/* Inspect & Try Showcase Button */}
                   <button
-                    disabled
-                    className="w-full py-1.5 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800/80 border border-slate-700/60 cursor-default flex items-center justify-center gap-1.5"
+                    onClick={() => setShowcaseItem(item)}
+                    className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800/90 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 transition flex items-center justify-center gap-1.5 active:scale-98"
+                    title="Inspect 3D Preview & Live Trial"
                   >
-                    <Check className="w-3.5 h-3.5" style={{ color: item.accentColor }} />
-                    Theme Active
+                    <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Inspect & Try</span>
                   </button>
-                ) : isUnlocked ? (
-                  <button
-                    onClick={() => handleEquip(item.id, item.name)}
-                    className="w-full py-1.5 rounded-xl text-xs font-semibold text-white transition-all bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 active:scale-98 flex items-center justify-center gap-1.5"
-                  >
-                    Equip Theme
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handlePurchase(item.id, item.name, item.costXP)}
-                    disabled={!canAfford}
-                    className={`w-full py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 active:scale-98 ${
-                      canAfford
-                        ? 'text-white shadow-md'
-                        : 'text-slate-500 bg-slate-800/50 border border-slate-800 cursor-not-allowed'
-                    }`}
-                    style={{
-                      backgroundColor: canAfford ? item.accentColor : undefined,
-                      boxShadow: canAfford ? `0 2px 10px ${item.glowColor}` : undefined,
-                    }}
-                  >
-                    {canAfford ? (
-                      <>
-                        <ShoppingBag className="w-3.5 h-3.5" />
-                        Unlock for {item.costXP} XP
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-3.5 h-3.5" />
-                        Need {item.costXP - currentXP} more XP
-                      </>
-                    )}
-                  </button>
-                )}
+
+                  {/* Equip / Unlock Quick Button */}
+                  {isActive ? (
+                    <button
+                      disabled
+                      className="py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800/80 border border-slate-700/60 cursor-default flex items-center justify-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" style={{ color: item.accentColor }} />
+                      <span>Active</span>
+                    </button>
+                  ) : isUnlocked ? (
+                    <button
+                      onClick={() => handleEquip(item.id, item.name)}
+                      className="py-1.5 px-3.5 rounded-xl text-xs font-semibold text-white transition-all bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 active:scale-98 flex items-center justify-center gap-1"
+                    >
+                      Equip
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handlePurchase(item.id, item.name, item.costXP)}
+                      disabled={!canAfford}
+                      className={`py-1.5 px-3.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1 active:scale-98 ${
+                        canAfford
+                          ? 'text-white shadow-md'
+                          : 'text-slate-500 bg-slate-800/50 border border-slate-800 cursor-not-allowed'
+                      }`}
+                      style={{
+                        backgroundColor: canAfford ? item.accentColor : undefined,
+                        boxShadow: canAfford ? `0 2px 10px ${item.glowColor}` : undefined,
+                      }}
+                    >
+                      {canAfford ? (
+                        <>
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>Unlock</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>{item.costXP} XP</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Cinematic Showcase Modal */}
+      {showcaseItem && (
+        <ThemeShowcaseModal
+          item={showcaseItem}
+          gamification={gamification}
+          onClose={() => setShowcaseItem(null)}
+          onToast={showToast}
+        />
+      )}
     </div>
   );
 };

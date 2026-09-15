@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -13,10 +13,12 @@ import {
   Clock,
   Zap,
   Monitor,
+  Pencil,
 } from 'lucide-react';
 import { appCore } from '../../core';
 import type { Category, Session } from '../../core';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { HabitCueModal } from '../components/HabitCueModal';
 import { sounds } from '../utils/sound';
 
 interface TimerViewProps {
@@ -40,15 +42,20 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   const [dailyGoalHours, setDailyGoalHours] = useState<number | null>(null); // null = not yet set by user
   const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
   const [showIdleNudge, setShowIdleNudge] = useState<boolean>(false);
-  const [nudgeDismissed, setNudgeDismissed] = useState<boolean>(false);
+  const [_nudgeDismissed, setNudgeDismissed] = useState<boolean>(false);
   const nudgeDismissedRef = useRef<boolean>(false);
   const [lastCategory, setLastCategory] = useState<Category | null>(null);
   // True when the running timer was started by a different device
   const [isRemoteTimer, setIsRemoteTimer] = useState<boolean>(false);
   const localSessionStartRef = useRef<string | null>(null); // tracks if WE started it
+  const [activeCosmetic, setActiveCosmetic] = useState(appCore.gamification.getActiveOrTrialCosmetic());
+  // gameState as proper reactive state — subscribes to gamification so XP/streak update immediately
+  const [gameState, setGameState] = useState(appCore.gamification.getState());
+  const [isCueModalOpen, setIsCueModalOpen] = useState<boolean>(false);
+  const [dailyCommitmentNote, setDailyCommitmentNote] = useState<string | null>(null);
 
-  // Sync state with AppCore
-  const refreshStats = () => {
+  // Sync state with AppCore — stable callback reference via useCallback
+  const refreshStats = useCallback(() => {
     const today = new Date();
     const totalToday = appCore.sessionLog.getTotalForDay(today);
     setTodayLoggedSec(totalToday);
@@ -72,14 +79,9 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       const target = appCore.targetTracker.getTargetForCategory(activeCatId);
       setActiveTargetHours(target ? target.targetHours : 0);
     }
-  };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setCategories([...appCore.categories]);
-    if (!selectedCategoryId && appCore.categories.length > 0) {
-      setSelectedCategoryId(appCore.categories[0].id);
-    }
-
     appCore.storage.getSetting<number>('daily_goal_hours').then((goal) => {
       // Only set if user has explicitly saved a goal (null means never set)
       if (goal !== null && goal !== undefined && goal > 0) {
@@ -87,6 +89,10 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       } else {
         setDailyGoalHours(null);
       }
+    });
+
+    appCore.storage.getSetting<string>('commitment_note').then((noteVal) => {
+      setDailyCommitmentNote(noteVal || null);
     });
 
     const unsubTimerState = appCore.timer.onStateChange((status) => {
@@ -125,6 +131,11 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       refreshStats();
     });
 
+    const unsubGamification = appCore.gamification.subscribe(() => {
+      setGameState(appCore.gamification.getState());
+      setActiveCosmetic(appCore.gamification.getActiveOrTrialCosmetic());
+    });
+
     refreshStats();
 
     return () => {
@@ -133,8 +144,9 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       unsubCategories();
       unsubLog();
       unsubTargets();
+      unsubGamification();
     };
-  }, [selectedCategoryId]);
+  }, [refreshStats]);
 
   // Track whether the active timer was started locally or remotely
   // so we can show the "Synced from another device" pill
@@ -156,6 +168,8 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
     }
     const catId = selectedCategoryId || (categories[0]?.id ?? '');
     sounds.playStart();
+    const mood = appCore.moodEngine.getMood(gameState.currentStreak, true);
+    sounds.playMoodChime(mood.tier);
     appCore.timer.start(catId, note);
     // Mark this session as locally-started
     setIsRemoteTimer(false);
@@ -187,6 +201,13 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
       }
       if (onSessionLogged) {
         onSessionLogged(session);
+      }
+      if (typeof document !== 'undefined' && document.hidden) {
+        const cat = categories.find((c) => c.id === session.categoryId);
+        void appCore.notifications.notifyTimerComplete(
+          cat?.name || 'Focus Session',
+          Math.max(1, Math.round(session.durationSec / 60))
+        );
       }
     }
     setNote('');
@@ -230,7 +251,6 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   };
 
   const time = formatTime(elapsedSec);
-  const gameState = appCore.gamification.getState();
   const streakMultiplier = appCore.gamification.getStreakMultiplier();
 
   // Daily quest metrics
@@ -248,10 +268,15 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
   const minuteProgress = ((elapsedSec % 3600) / 3600) * 100;
   const strokeDashoffset = 2 * Math.PI * 135 * (1 - minuteProgress / 100);
 
+  const currentMood = appCore.moodEngine.getMood(
+    gameState.currentStreak,
+    timerStatus === 'running'
+  );
+
   return (
     <div className="flex flex-col items-center justify-center max-w-xl mx-auto px-4 py-6 sm:py-8">
-      {/* Top Floating Pill: Streak & Level */}
-      <div className="flex items-center gap-3 mb-8">
+      {/* Top Floating Pill: Streak, Level, Mood Atmosphere */}
+      <div className="flex flex-wrap items-center justify-center gap-2.5 mb-6 sm:mb-8">
         <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-semibold shadow-sm shadow-orange-500/10">
           <Flame className="w-4 h-4 fill-current text-orange-500 animate-pulse" />
           <span>{gameState.currentStreak} Day Streak</span>
@@ -268,6 +293,20 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           <span className="text-slate-400 text-[10px] font-mono">({gameState.xp} XP)</span>
         </div>
 
+        {/* Mood Tier Atmosphere Badge */}
+        <div
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full border text-xs font-semibold shadow-sm transition-all duration-500 cursor-help"
+          style={{
+            backgroundColor: `${currentMood.accentColor}18`,
+            borderColor: `${currentMood.accentColor}40`,
+            color: currentMood.accentColor,
+            boxShadow: `0 0 10px ${currentMood.glowColor}`,
+          }}
+          title={currentMood.subtitle}
+        >
+          <span>{currentMood.badgeLabel}</span>
+        </div>
+
         {streakMultiplier > 1 && (
           <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shadow-sm shadow-amber-500/10">
             <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
@@ -275,6 +314,18 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           </div>
         )}
       </div>
+
+      {/* Monday Fresh Start or Gloomy Streak Motivation Banner */}
+      {currentMood.isFreshStartMonday && timerStatus !== 'running' ? (
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold shadow-sm animate-fade-in text-center">
+          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>New week, clean slate · Start a session to light up your streak!</span>
+        </div>
+      ) : currentMood.tier === 'gloomy' && timerStatus === 'idle' ? (
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-slate-300 text-xs shadow-sm animate-fade-in text-center">
+          <span className="text-slate-400">☁️ Streak broken · Start a session to ignite heat and revive Day 1!</span>
+        </div>
+      ) : null}
 
       {/* Remote device live sync indicator */}
       {isRemoteTimer && timerStatus !== 'idle' && (
@@ -321,6 +372,42 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
         </div>
       </div>
 
+      {/* Category If-Then Habit Cue Banner with Inline Edit */}
+      <div className="w-full mb-5 -mt-3 flex flex-col items-center justify-center gap-2">
+        {activeCategory?.ifThenCue ? (
+          <div className="px-3.5 py-1.5 rounded-xl bg-slate-900/70 border border-slate-700/50 flex items-center justify-between gap-2.5 text-xs text-slate-300 shadow-sm animate-fade-in max-w-md w-full">
+            <div className="flex items-center gap-2 overflow-hidden text-left">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+                Habit Cue
+              </span>
+              <span className="italic truncate text-slate-200">"{activeCategory.ifThenCue}"</span>
+            </div>
+            <button
+              onClick={() => setIsCueModalOpen(true)}
+              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition shrink-0"
+              title="Edit Habit Cue"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsCueModalOpen(true)}
+            className="text-[11px] text-slate-400 hover:text-indigo-300 px-3 py-1 rounded-full border border-dashed border-slate-700/70 hover:border-indigo-500/40 hover:bg-indigo-500/10 transition flex items-center gap-1.5"
+          >
+            <Sparkles className="w-3 h-3 text-indigo-400" />
+            <span>+ Add Habit Cue for {activeCategory?.name}</span>
+          </button>
+        )}
+
+        {dailyCommitmentNote && (
+          <div className="text-center px-3.5 py-1 rounded-full bg-slate-900/40 border border-slate-800 text-[11px] text-slate-400 max-w-md truncate">
+            <span className="text-amber-400 font-semibold mr-1">Daily Anchor:</span>
+            <span className="italic text-slate-300">"{dailyCommitmentNote}"</span>
+          </div>
+        )}
+      </div>
+
       {/* Modern Circular Zen/Cyber Timer Face */}
       <div className="relative mb-6 sm:mb-8 flex items-center justify-center">
         {/* Glowing backdrop aura */}
@@ -333,19 +420,28 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
               : 'opacity-15'
           }`}
           style={{
-            backgroundColor: activeCategory?.color || '#6366f1',
+            backgroundColor:
+              activeCosmetic.id === 'theme-infernal-phoenix'
+                ? '#ff4500'
+                : activeCategory?.color || '#6366f1',
           }}
         />
 
         {/* Central Circular Dial with SVG Progress Track */}
         <div
           className={`relative w-[268px] h-[268px] sm:w-80 sm:h-80 rounded-full flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-2xl shadow-2xl transition-all duration-500 border ${
-            timerStatus === 'running' ? 'timer-active-glow' : ''
+            timerStatus === 'running'
+              ? activeCosmetic.id === 'theme-infernal-phoenix'
+                ? 'phoenix-glow timer-active-glow'
+                : 'timer-active-glow'
+              : ''
           }`}
           style={{
             borderColor:
               timerStatus === 'running'
-                ? activeCategory?.color || '#6366f1'
+                ? activeCosmetic.id === 'theme-infernal-phoenix'
+                  ? '#ff4500'
+                  : activeCategory?.color || '#6366f1'
                 : 'rgba(255, 255, 255, 0.1)',
           }}
         >
@@ -364,7 +460,13 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
                 cx="150"
                 cy="150"
                 r="135"
-                stroke={activeCategory?.color || '#6366f1'}
+                stroke={
+                  activeCosmetic.id === 'theme-infernal-phoenix'
+                    ? '#ff4500'
+                    : appCore.moodEngine.isEnabled()
+                    ? appCore.moodEngine.getRingColor(elapsedSec, currentMood.ringHue)
+                    : activeCategory?.color || '#6366f1'
+                }
                 strokeWidth="6"
                 strokeDasharray={2 * Math.PI * 135}
                 strokeDashoffset={strokeDashoffset}
@@ -698,6 +800,17 @@ export const TimerView: React.FC<TimerViewProps> = ({ onSessionLogged, onNavigat
           </div>
         </div>
       </div>
+
+      {/* Habit Cue Self-Note Modal */}
+      <HabitCueModal
+        category={activeCategory || null}
+        isOpen={isCueModalOpen}
+        onClose={() => setIsCueModalOpen(false)}
+        onSaved={() => {
+          setCategories([...appCore.categories]);
+          refreshStats();
+        }}
+      />
     </div>
   );
 };

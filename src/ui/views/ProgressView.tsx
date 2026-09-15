@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, Flame, Shield, Sparkles, Clock, CheckCircle2, Lock, Zap } from 'lucide-react';
+import { Trophy, Flame, Shield, Sparkles, Clock, CheckCircle2, Lock, Zap, Wind } from 'lucide-react';
 import { appCore } from '../../core';
 import type { GamificationStateDTO } from '../../types';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -238,6 +238,174 @@ export const ProgressView: React.FC = () => {
       {/* Cosmetics & Theme Shop */}
       <div className="mb-8">
         <BadgeShop gamification={appCore.gamification} />
+      </div>
+
+      {/* Streak Atmosphere Inspector */}
+      <AtmosphereInspector currentStreak={gameState.currentStreak} />
+    </div>
+  );
+};
+
+// ── Atmosphere Inspector ──────────────────────────────────────────────────────
+
+const ALL_TIERS: Array<{ streakExample: number; label: string; unlock: string }> = [
+  { streakExample: 0,  label: '☁️ Gloomy',          unlock: 'No streak (starting out)' },
+  { streakExample: 1,  label: '🌊 Calm',             unlock: 'Day 1–2 streak' },
+  { streakExample: 3,  label: '🔥 Warm Ember',       unlock: 'Day 3–6 streak' },
+  { streakExample: 7,  label: '⚡ Bright Voltage',   unlock: 'Day 7–13 streak (1+ week!)' },
+  { streakExample: 14, label: '✨ Vivid Momentum',   unlock: 'Day 14–29 streak (2+ weeks!)' },
+  { streakExample: 30, label: '☀️ Radiant Apex',     unlock: 'Day 30+ streak (legendary!)' },
+];
+
+const AtmosphereInspector: React.FC<{ currentStreak: number }> = ({ currentStreak }) => {
+  const [previewStreak, setPreviewStreak] = useState<number | null>(null);
+
+  const displayStreak = previewStreak ?? currentStreak;
+  const mood = appCore.moodEngine.getMood(displayStreak, false);
+  const currentMood = appCore.moodEngine.getMood(currentStreak, false);
+  const isPreviewing = previewStreak !== null && previewStreak !== currentStreak;
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <Wind className="w-5 h-5 text-sky-400" />
+          <span>Streak Atmosphere</span>
+        </h3>
+        <span className="text-xs font-semibold text-slate-400">
+          Active: <span className="text-sky-300">{currentMood.badgeLabel}</span>
+        </span>
+      </div>
+
+      {/* Tier Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+        {ALL_TIERS.map(({ streakExample, label, unlock }) => {
+          const tierMood = appCore.moodEngine.getMood(streakExample, false);
+          const isActive = tierMood.tier === currentMood.tier;
+          const isPrev   = previewStreak === streakExample;
+
+          return (
+            <button
+              key={streakExample}
+              onClick={() => setPreviewStreak(isPrev ? null : streakExample)}
+              className={`relative p-3 rounded-2xl border text-left transition-all duration-200 group ${
+                isPrev
+                  ? 'border-transparent scale-[1.03] shadow-lg'
+                  : isActive
+                  ? 'border-white/20 bg-white/5'
+                  : 'border-slate-800/80 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-800/50'
+              }`}
+              style={isPrev ? {
+                borderColor: tierMood.accentColor + '60',
+                backgroundColor: tierMood.accentColor + '10',
+                boxShadow: `0 4px 24px ${tierMood.glowColor}`,
+              } : {}}
+            >
+              {/* Active pill */}
+              {isActive && (
+                <span
+                  className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider"
+                  style={{ background: currentMood.accentColor + '30', color: currentMood.accentColor }}
+                >
+                  Now
+                </span>
+              )}
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center mb-2 text-base"
+                style={{
+                  background: tierMood.accentColor + '20',
+                  boxShadow: `0 0 12px ${tierMood.glowColor}`,
+                }}
+              >
+                {label.split(' ')[0]}
+              </div>
+              <div className="text-xs font-bold text-white leading-tight mb-0.5">
+                {label.split(' ').slice(1).join(' ')}
+              </div>
+              <div className="text-[10px] text-slate-500 leading-tight">{unlock}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Live Preview Panel */}
+      <div
+        className="relative rounded-3xl overflow-hidden p-5 transition-all duration-500"
+        style={{
+          background: mood.bgGradient,
+          boxShadow: `0 0 40px ${mood.glowColor}`,
+          border: `1px solid ${mood.accentColor}25`,
+        }}
+      >
+        {isPreviewing && (
+          <span
+            className="absolute top-3.5 right-4 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
+            style={{ background: mood.accentColor + '25', color: mood.accentColor }}
+          >
+            Preview Mode
+          </span>
+        )}
+
+        <div className="flex items-start gap-4">
+          {/* Glowing ring badge */}
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+            style={{
+              background: `radial-gradient(circle at 40% 40%, ${mood.accentColor}35, transparent)`,
+              boxShadow: `0 0 24px ${mood.glowColor}, inset 0 0 12px ${mood.accentColor}20`,
+              border: `1.5px solid ${mood.accentColor}50`,
+            }}
+          >
+            {mood.badgeLabel.split(' ')[0]}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div
+              className="text-[10px] font-bold uppercase tracking-widest mb-1"
+              style={{ color: mood.accentColor }}
+            >
+              {mood.badgeLabel}
+            </div>
+            <h4 className="text-lg font-extrabold text-white leading-tight mb-1">{mood.title}</h4>
+            <p className="text-xs text-slate-300 leading-relaxed">{mood.subtitle}</p>
+          </div>
+        </div>
+
+        {/* Color swatches */}
+        <div className="mt-4 flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full ring-1 ring-white/10"
+              style={{ background: mood.accentColor }}
+            />
+            <span className="text-[10px] text-slate-400 font-mono">{mood.accentColor}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full ring-1 ring-white/10"
+              style={{ background: mood.glowColor }}
+            />
+            <span className="text-[10px] text-slate-400 font-mono">glow</span>
+          </div>
+          <div className="ml-auto text-[10px] text-slate-500 font-mono">
+            hue {mood.ringHue}°
+          </div>
+        </div>
+
+        {!isPreviewing && (
+          <p className="mt-3 text-[10px] text-slate-500 italic">
+            Tap any tier card above to preview its atmosphere ↑
+          </p>
+        )}
+        {isPreviewing && (
+          <button
+            onClick={() => setPreviewStreak(null)}
+            className="mt-3 text-[10px] font-semibold"
+            style={{ color: mood.accentColor }}
+          >
+            ← Back to my current atmosphere
+          </button>
+        )}
       </div>
     </div>
   );

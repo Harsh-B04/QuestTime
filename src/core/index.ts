@@ -8,4 +8,7 @@ export * from './targetTracker';
 export * from './gamification';
 export * from './auth';
 export * from './sync';
+export * from './targetLockPolicy';
+export * from './moodEngine';
+export * from './notifications';
 export * from './coreContext';

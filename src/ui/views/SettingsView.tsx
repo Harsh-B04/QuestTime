@@ -12,12 +12,18 @@ import {
   LogOut,
   User,
   Sparkles,
+  Pencil,
+  Bell,
+  BellRing,
+  Clock,
+  Flame,
 } from 'lucide-react';
-import { appCore } from '../../core';
+import { appCore, type NotificationSettings } from '../../core';
 import { Category } from '../../core/category';
 import { Session } from '../../core/session';
 import type { SyncStatus } from '../../core/sync';
 import { CategoryIcon, AVAILABLE_ICONS } from '../components/CategoryIcon';
+import { HabitCueModal } from '../components/HabitCueModal';
 
 const PRESET_COLORS = [
   '#6366f1', // Indigo
@@ -54,15 +60,33 @@ export const SettingsView: React.FC = () => {
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatColor, setNewCatColor] = useState<string>(PRESET_COLORS[0]);
   const [newCatIcon, setNewCatIcon] = useState<string>('Briefcase');
+  const [newCatCue, setNewCatCue] = useState<string>('');
+  const [editingCategoryForCue, setEditingCategoryForCue] = useState<Category | null>(null);
+
+  // Daily Commitment Note state
+  const [commitmentNote, setCommitmentNote] = useState<string>('');
+  const [commitmentSaved, setCommitmentSaved] = useState<boolean>(false);
+  const [isMoodEnabled, setIsMoodEnabled] = useState<boolean>(appCore.moodEngine.isEnabled());
 
   // Feedback states
   const [demoDataSeeded, setDemoDataSeeded] = useState<boolean>(false);
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [resetDone, setResetDone] = useState<boolean>(false);
 
+  // Notification state
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(
+    appCore.notifications.getSettings()
+  );
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    appCore.notifications.getPermission()
+  );
+  const [testNotifSent, setTestNotifSent] = useState<boolean>(false);
+
   useEffect(() => {
-    setCategories([...appCore.categories]);
-    setCurrentUser(appCore.auth.getUser());
+    // Load commitment note
+    appCore.storage.getSetting<string>('commitment_note').then((note) => {
+      if (note) setCommitmentNote(note);
+    });
 
     // Load initial pending sync count from IndexedDB
     appCore.storage.getSyncQueue().then((queue) => {
@@ -81,12 +105,39 @@ export const SettingsView: React.FC = () => {
       setCategories([...appCore.categories]);
     });
 
+    const unsubNotifs = appCore.notifications.subscribe((settings) => {
+      setNotificationSettings(settings);
+      setNotificationPermission(appCore.notifications.getPermission());
+    });
+
     return () => {
       unsubSync();
       unsubAuth();
       unsubCats();
+      unsubNotifs();
     };
   }, []);
+
+  const handleRequestNotificationPermission = async () => {
+    const perm = await appCore.notifications.requestPermission();
+    setNotificationPermission(perm);
+  };
+
+  const handleToggleNotification = async (key: keyof NotificationSettings, val: boolean) => {
+    await appCore.notifications.updateSettings({ [key]: val });
+  };
+
+  const handleChangeReminderTime = async (val: string) => {
+    await appCore.notifications.updateSettings({ reminderTime: val });
+  };
+
+  const handleSendTestNotification = async () => {
+    const ok = await appCore.notifications.sendTestNotification();
+    if (ok) {
+      setTestNotifSent(true);
+      setTimeout(() => setTestNotifSent(false), 4000);
+    }
+  };
 
   const handleSaveSupabaseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,10 +193,19 @@ export const SettingsView: React.FC = () => {
       name: newCatName.trim(),
       color: newCatColor,
       icon: newCatIcon,
+      ifThenCue: newCatCue.trim() || undefined,
     });
     await appCore.saveCategory(cat);
     setNewCatName('');
+    setNewCatCue('');
     setShowAddCategory(false);
+  };
+
+  const handleSaveCommitmentNote = async () => {
+    const trimmed = commitmentNote.trim();
+    await appCore.storage.setSetting('commitment_note', trimmed);
+    setCommitmentSaved(true);
+    setTimeout(() => setCommitmentSaved(false), 3000);
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -418,24 +478,42 @@ export const SettingsView: React.FC = () => {
               key={cat.id}
               className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 overflow-hidden">
                 <div
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-white"
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0"
                   style={{ backgroundColor: cat.color }}
                 >
                   <CategoryIcon name={cat.icon} className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-semibold text-white">{cat.name}</span>
+                <div className="overflow-hidden">
+                  <div className="text-sm font-semibold text-white">{cat.name}</div>
+                  {cat.ifThenCue ? (
+                    <div className="text-[11px] text-indigo-400 italic truncate max-w-xs sm:max-w-md">
+                      "{cat.ifThenCue}"
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500">No habit cue set</div>
+                  )}
+                </div>
               </div>
-              {categories.length > 1 && (
+              <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => handleDeleteCategory(cat.id)}
-                  className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
-                  title="Delete category"
+                  onClick={() => setEditingCategoryForCue(cat)}
+                  className="p-1.5 text-slate-400 hover:text-indigo-300 rounded-lg hover:bg-slate-800 transition"
+                  title="Edit Habit Cue Self-Note"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Pencil className="w-4 h-4" />
                 </button>
-              )}
+                {categories.length > 1 && (
+                  <button
+                    onClick={() => handleDeleteCategory(cat.id)}
+                    className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
+                    title="Delete category"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -455,6 +533,19 @@ export const SettingsView: React.FC = () => {
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
+                  Habit Cue / Self-Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder='e.g. "When I sit at my desk with coffee, I will start."'
+                  value={newCatCue}
+                  onChange={(e) => setNewCatCue(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm placeholder:text-slate-600"
                 />
               </div>
 
@@ -521,6 +612,281 @@ export const SettingsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Daily Commitment Self-Note Section */}
+      <div className="glass-panel rounded-3xl p-6 border-amber-500/20">
+        <div className="flex items-center gap-2.5 mb-2">
+          <Sparkles className="w-5 h-5 text-amber-400" />
+          <h3 className="text-base font-bold text-white">Daily Commitment Self-Note</h3>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">
+          Your personal psychological anchor. It appears on your Timer screen and serves as your streak-protection reminder.
+        </p>
+
+        <div className="space-y-3">
+          <textarea
+            rows={2}
+            value={commitmentNote}
+            onChange={(e) => setCommitmentNote(e.target.value)}
+            placeholder='e.g., "I will protect my focus streak because daily momentum compounds into mastery."'
+            className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 focus:border-amber-500/50 text-white text-xs resize-none placeholder:text-slate-600 outline-none transition"
+          />
+          <div className="flex items-center justify-between">
+            {commitmentSaved ? (
+              <span className="text-xs text-emerald-400 flex items-center gap-1 animate-fade-in">
+                <Check className="w-3.5 h-3.5" />
+                <span>Saved commitment anchor!</span>
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-500">Press save to update your daily anchor.</span>
+            )}
+            <button
+              onClick={handleSaveCommitmentNote}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow shadow-amber-500/10 active:scale-95"
+            >
+              Save Note
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Streak Atmosphere & Mood Engine */}
+      <div className="glass-panel rounded-3xl p-6 border-indigo-500/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-5 h-5 text-indigo-400" />
+            <div>
+              <h3 className="text-base font-bold text-white">Dynamic Streak Atmosphere</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Atmosphere shifts based on your streak: Gloomy (0d) → Calm (1-2d) → Warm (3-6d) → Bright (1-2w) → Vivid (2-4w) → Radiant (30d+).
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              const next = !isMoodEnabled;
+              setIsMoodEnabled(next);
+              await appCore.moodEngine.setEnabled(next);
+            }}
+            className={`w-12 h-6 rounded-full transition-colors relative p-1 shrink-0 ${
+              isMoodEnabled ? 'bg-indigo-600' : 'bg-slate-700'
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                isMoodEnabled ? 'translate-x-6' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Push Notifications & Daily Streak Reminders */}
+      <div className="glass-panel rounded-3xl p-6 border-indigo-500/20">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <BellRing className="w-5 h-5 text-indigo-400" />
+            <div>
+              <h3 className="text-base font-bold text-white">Daily Reminders & Streak Protection</h3>
+              <p className="text-xs text-slate-400">
+                Receive notifications on your phone when installed via Chrome Home Screen.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                notificationPermission === 'granted'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : notificationPermission === 'denied'
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}
+            >
+              {notificationPermission === 'granted'
+                ? 'Active'
+                : notificationPermission === 'denied'
+                ? 'Blocked in Browser'
+                : 'Not Enabled'}
+            </span>
+          </div>
+        </div>
+
+        {/* Permission Request Prompt if not granted */}
+        {notificationPermission !== 'granted' && (
+          <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-indigo-200">
+              <span className="font-bold">Allow phone alerts:</span> Tap below to grant notification permission so Chrome can alert you before your streak resets.
+            </div>
+            <button
+              onClick={handleRequestNotificationPermission}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition shrink-0 active:scale-95"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Enable Phone Alerts</span>
+            </button>
+          </div>
+        )}
+
+        {/* Settings options */}
+        <div className="space-y-4">
+          {/* Daily Streak Reminder Toggle */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                <Flame className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">Daily Streak Reminder</div>
+                <div className="text-xs text-slate-400">
+                  Alert me if I haven't logged any focus sessions today.
+                </div>
+              </div>
+            </div>
+            <button
+              disabled={notificationPermission !== 'granted'}
+              onClick={() =>
+                handleToggleNotification('dailyReminderEnabled', !notificationSettings.dailyReminderEnabled)
+              }
+              className={`w-11 h-6 rounded-full transition-colors relative p-1 shrink-0 ${
+                notificationSettings.dailyReminderEnabled && notificationPermission === 'granted'
+                  ? 'bg-amber-500'
+                  : 'bg-slate-700 opacity-60'
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  notificationSettings.dailyReminderEnabled && notificationPermission === 'granted'
+                    ? 'translate-x-5'
+                    : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Reminder Time Picker */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">Evening Check-in Time</div>
+                <div className="text-xs text-slate-400">
+                  Preferred evening check-in time before midnight.
+                </div>
+              </div>
+            </div>
+            <input
+              type="time"
+              disabled={notificationPermission !== 'granted' || !notificationSettings.dailyReminderEnabled}
+              value={notificationSettings.reminderTime || '20:00'}
+              onChange={(e) => handleChangeReminderTime(e.target.value)}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono disabled:opacity-50 outline-none"
+            />
+          </div>
+
+          {/* Streak At Risk Alert Toggle */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0">
+                <Flame className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">High-Priority Streak Protection</div>
+                <div className="text-xs text-slate-400">
+                  Sends urgent warning when an active streak is about to reset.
+                </div>
+              </div>
+            </div>
+            <button
+              disabled={notificationPermission !== 'granted'}
+              onClick={() =>
+                handleToggleNotification('streakAlertEnabled', !notificationSettings.streakAlertEnabled)
+              }
+              className={`w-11 h-6 rounded-full transition-colors relative p-1 shrink-0 ${
+                notificationSettings.streakAlertEnabled && notificationPermission === 'granted'
+                  ? 'bg-rose-500'
+                  : 'bg-slate-700 opacity-60'
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  notificationSettings.streakAlertEnabled && notificationPermission === 'granted'
+                    ? 'translate-x-5'
+                    : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Focus Complete Timer Alerts */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                <Check className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">Focus Session Completion Alerts</div>
+                <div className="text-xs text-slate-400">
+                  Notify when a focus timer finishes while screen is locked or tab is hidden.
+                </div>
+              </div>
+            </div>
+            <button
+              disabled={notificationPermission !== 'granted'}
+              onClick={() =>
+                handleToggleNotification('timerAlertEnabled', !notificationSettings.timerAlertEnabled)
+              }
+              className={`w-11 h-6 rounded-full transition-colors relative p-1 shrink-0 ${
+                notificationSettings.timerAlertEnabled && notificationPermission === 'granted'
+                  ? 'bg-emerald-500'
+                  : 'bg-slate-700 opacity-60'
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  notificationSettings.timerAlertEnabled && notificationPermission === 'granted'
+                    ? 'translate-x-5'
+                    : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Test Notification Action */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">
+              Uses Android Chrome Service Worker + Periodic Sync for background alerts.
+            </div>
+            <button
+              onClick={handleSendTestNotification}
+              disabled={notificationPermission !== 'granted'}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 disabled:opacity-40 transition active:scale-95"
+            >
+              <Bell className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Send Test Notification</span>
+            </button>
+          </div>
+
+          {testNotifSent && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 flex items-center gap-2 animate-fade-in">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Test notification fired! Check your Android notification drawer.</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Habit Cue Quick Edit Modal */}
+      <HabitCueModal
+        category={editingCategoryForCue}
+        isOpen={Boolean(editingCategoryForCue)}
+        onClose={() => setEditingCategoryForCue(null)}
+        onSaved={() => {
+          setCategories([...appCore.categories]);
+        }}
+      />
 
       {/* Data Tools */}
       <div className="glass-panel rounded-3xl p-6">

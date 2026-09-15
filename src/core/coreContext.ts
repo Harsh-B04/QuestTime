@@ -7,6 +7,10 @@ import { GamificationEngine } from './gamification';
 import { AuthService } from './auth';
 import { SyncService } from './sync';
 
+import { TargetLockPolicy } from './targetLockPolicy';
+import { MoodEngine } from './moodEngine';
+import { NotificationService } from './notifications';
+
 export class AppCore {
   private static instance: AppCore | null = null;
 
@@ -17,6 +21,9 @@ export class AppCore {
   public readonly gamification: GamificationEngine;
   public readonly auth: AuthService;
   public readonly sync: SyncService;
+  public readonly targetLockPolicy: TargetLockPolicy;
+  public readonly moodEngine: MoodEngine;
+  public readonly notifications: NotificationService;
 
   public categories: Category[] = [];
   private isInitialized: boolean = false;
@@ -37,6 +44,9 @@ export class AppCore {
     this.gamification = new GamificationEngine(this.storage);
     this.auth = AuthService.getInstance();
     this.sync = SyncService.getInstance(this.storage, this.auth);
+    this.targetLockPolicy = TargetLockPolicy.getInstance(this.storage);
+    this.moodEngine = MoodEngine.getInstance(this.storage);
+    this.notifications = NotificationService.getInstance(this.storage);
   }
 
   public onCategoriesChange(callback: () => void): () => void {
@@ -58,6 +68,9 @@ export class AppCore {
     await this.sessionLog.load();
     await this.targetTracker.load();
     await this.gamification.load();
+    await this.targetLockPolicy.load();
+    await this.moodEngine.load();
+    await this.notifications.load();
     this.notifyCategories();
   }
 
@@ -77,10 +90,13 @@ export class AppCore {
       this.categories = savedCats.map((dto) => new Category(dto));
     }
 
-    // 3. Load SessionLog & TargetTracker & Gamification
+    // 3. Load SessionLog, TargetTracker, Gamification, LockPolicy, MoodEngine, Notifications
     await this.sessionLog.load();
     await this.targetTracker.load();
     await this.gamification.load();
+    await this.targetLockPolicy.load();
+    await this.moodEngine.load();
+    await this.notifications.load();
 
     // 4. Restore any active running/paused timer from storage
     await this.timer.restoreFromStorage();
@@ -108,13 +124,46 @@ export class AppCore {
       }
     });
 
+    // 6b. When another device joins and requests current timer state, broadcast immediately
+    //     so the joiner doesn't have to wait for the next heartbeat tick (up to 5s).
+    this.sync.onStateRequest(() => {
+      const status = this.timer.getStatus();
+      if (status !== 'idle') {
+        this.sync.broadcastTimerState({
+          status: status as 'running' | 'paused',
+          categoryId: this.timer.getCategoryId(),
+          startTimestamp: this.timer.getStartTimestamp(),
+          accumulatedSec: this.timer.getElapsedSec(),
+          sessionStartTime: this.timer.getSessionStartTime(),
+          note: this.timer.getNote(),
+        });
+      }
+    });
+
     // 7. Connect sync updates to auto-refresh in-memory state
     this.sync.onSyncComplete(async () => {
       await this.reloadFromStorage();
     });
 
+    // 8. Setup daily reminder & streak check on app launch and when returning to foreground
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          void this.checkDailyReminders();
+        }
+      });
+    }
+    void this.checkDailyReminders();
+
     this.isInitialized = true;
     this.notifyCategories();
+  }
+
+  public async checkDailyReminders(): Promise<void> {
+    const streak = this.gamification.getState().currentStreak;
+    const today = new Date().toISOString().split('T')[0];
+    const sessionsToday = this.sessionLog.getAll().filter((s) => s.startTime.startsWith(today)).length;
+    await this.notifications.checkDailyStreakReminder(streak, sessionsToday);
   }
 
   public getCategory(id: string): Category | undefined {

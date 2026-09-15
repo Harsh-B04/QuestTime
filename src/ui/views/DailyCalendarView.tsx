@@ -68,8 +68,6 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
   const forceRefresh = () => setTrigger((t) => t + 1);
 
   useEffect(() => {
-    setCategories([...appCore.categories]);
-
     // Load saved daily focus goal
     appCore.storage.getSetting<number>('daily_goal_hours').then((saved) => {
       if (saved && saved > 0) {
@@ -300,11 +298,14 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({ onSwitchTo
   };
 
   const getDayHeading = (dateStr: string) => {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    // Derive yesterday from the already-reactive todayStr (avoids impure Date.now() in render)
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const yestDate = new Date(y, m - 1, d - 1);
+    const yesterdayStr = `${yestDate.getFullYear()}-${String(yestDate.getMonth() + 1).padStart(2, '0')}-${String(yestDate.getDate()).padStart(2, '0')}`;
     if (dateStr === todayStr) return 'Today';
-    if (dateStr === yesterday) return 'Yesterday';
-    const d = new Date(dateStr + 'T12:00:00');
-    return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    if (dateStr === yesterdayStr) return 'Yesterday';
+    const dObj = new Date(dateStr + 'T12:00:00');
+    return dObj.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   // Actions

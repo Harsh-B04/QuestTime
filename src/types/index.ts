@@ -3,6 +3,7 @@ export interface CategoryDTO {
   name: string;
   color: string; // Tailwind hex / color string
   icon: string; // Lucide icon name
+  ifThenCue?: string; // e.g. "When I sit at my desk with coffee, I will start Coding"
   userId?: string;
   updatedAt?: string;
 }
@@ -48,6 +49,10 @@ export interface CosmeticShopItem {
   costXP: number;
   accentColor: string;
   glowColor: string;
+  tier?: 'MYTHIC' | 'LEGENDARY' | 'EPIC' | 'RARE' | 'DEFAULT';
+  perks?: string[];
+  lore?: string;
+  gradient?: string;
 }
 
 export interface GamificationStateDTO {

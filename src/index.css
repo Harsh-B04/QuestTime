@@ -140,8 +140,26 @@ input[type='number'] {
 
 /* ─── GPU-promote animated elements to prevent jitter ─── */
 .timer-active-glow,
+.phoenix-glow,
 .animate-fade-in {
   will-change: transform, opacity;
+}
+
+/* Fiery Phoenix Pulse Animation */
+@keyframes phoenix-flame-pulse {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(255, 69, 0, 0.45), inset 0 0 15px rgba(255, 140, 0, 0.25);
+    border-color: rgba(255, 69, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(255, 69, 0, 0.7), inset 0 0 30px rgba(255, 100, 0, 0.45);
+    border-color: rgba(255, 140, 0, 0.85);
+  }
+}
+
+.phoenix-glow {
+  animation: phoenix-flame-pulse 2.5s infinite ease-in-out;
+  transform: translateZ(0);
 }
 
 /* ─── Contain tab panels so switching views can't cause reflow ─── */

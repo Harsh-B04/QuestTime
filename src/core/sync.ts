@@ -38,7 +38,12 @@ export class SyncService {
 
   // Live cross-device timer sync via Supabase Broadcast
   private timerChannel: any = null;
+  private timerChannelReady: boolean = false;
+  private pendingBroadcasts: Array<Omit<TimerBroadcastState, 'deviceId'>> = [];
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay: number = 2000; // ms, doubles on each retry up to 30s
   private timerStateCallbacks: Set<(state: TimerBroadcastState) => void> = new Set();
+  private stateRequestCallbacks: Set<() => void> = new Set();
   // Stable per-tab device ID prevents the sender from re-processing its own broadcasts
   private readonly deviceId: string = crypto.randomUUID();
 
@@ -69,6 +74,9 @@ export class SyncService {
         this.isOnline = true;
         this.notify();
         this.syncAll();
+        // Re-establish realtime channels that may have dropped during offline period
+        const user = this.auth.getUser();
+        if (user) this.setupRealtime(user.id);
       });
       window.addEventListener('offline', () => {
         this.isOnline = false;
@@ -79,12 +87,22 @@ export class SyncService {
           this.syncAll();
         }
       });
-      // Periodic background sync every 15 seconds
+      // Re-connect realtime channels when the tab becomes visible again (e.g. mobile switch)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.isOnline && this.auth.isAuthenticated()) {
+          const user = this.auth.getUser();
+          if (user && (!this.timerChannel || !this.timerChannelReady)) {
+            this.setupRealtime(user.id);
+          }
+          this.syncAll();
+        }
+      });
+      // Periodic background sync every 10 seconds
       setInterval(() => {
         if (this.isOnline && this.auth.isAuthenticated() && !this.isSyncing) {
           this.syncAll();
         }
-      }, 15000);
+      }, 10000);
     }
 
     // When user logs in or out, update realtime and sync
@@ -145,8 +163,11 @@ export class SyncService {
         .subscribe();
 
       // Channel 2: Broadcast — live timer state across devices (no DB writes)
+      this.timerChannelReady = false;
       this.timerChannel = client
-        .channel(`timer_${userId}`)
+        .channel(`timer_${userId}`, {
+          config: { broadcast: { self: false, ack: false } },
+        })
         .on('broadcast', { event: 'timer_state' }, ({ payload }: { payload: TimerBroadcastState }) => {
           // Ignore messages sent by this same tab
           if (!payload || payload.deviceId === this.deviceId) return;
@@ -154,14 +175,75 @@ export class SyncService {
             try { cb(payload); } catch (e) { console.warn('timer broadcast cb error', e); }
           }
         })
-        .subscribe();
+        // A newly joined device can ask for the current timer state immediately
+        .on('broadcast', { event: 'state_request' }, ({ payload }: { payload: { deviceId: string } }) => {
+          if (!payload || payload.deviceId === this.deviceId) return;
+          // Notify all listeners (coreContext wires this to re-broadcast current timer state)
+          for (const cb of this.stateRequestCallbacks) {
+            try { cb(); } catch (e) { console.warn('state_request cb error', e); }
+          }
+        })
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            this.timerChannelReady = true;
+            this.reconnectDelay = 2000; // reset back-off on successful connect
+            // Flush any broadcasts that were queued while channel was connecting
+            const pending = this.pendingBroadcasts.splice(0);
+            for (const state of pending) {
+              this.broadcastTimerState(state);
+            }
+            // Ask primary device(s) to immediately send us their current timer state
+            this.sendStateRequest();
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            this.timerChannelReady = false;
+            this.scheduleTimerChannelReconnect(userId);
+          }
+        });
     } catch (e) {
       console.warn('Realtime channel setup failed:', e);
     }
   }
 
+  /** Schedule a reconnect attempt for the timer broadcast channel with exponential back-off */
+  private scheduleTimerChannelReconnect(userId: string): void {
+    if (this.reconnectTimer) return; // already scheduled
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.auth.isAuthenticated() && this.isOnline) {
+        const client = this.auth.getClient();
+        if (client && this.timerChannel) {
+          // Re-subscribe existing channel object first
+          try {
+            client.removeChannel(this.timerChannel);
+          } catch { /* ignore */ }
+          this.timerChannel = null;
+          this.timerChannelReady = false;
+        }
+        this.setupRealtime(userId);
+      }
+    }, delay);
+  }
+
+  /** Send a state_request broadcast so other devices immediately reply with their timer state */
+  private sendStateRequest(): void {
+    if (!this.timerChannel || !this.timerChannelReady) return;
+    try {
+      this.timerChannel.send({
+        type: 'broadcast',
+        event: 'state_request',
+        payload: { deviceId: this.deviceId },
+      });
+    } catch { /* non-fatal */ }
+  }
+
   private teardownRealtime(): void {
     const client = this.auth.getClient();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.realtimeChannel) {
       client?.removeChannel(this.realtimeChannel);
       this.realtimeChannel = null;
@@ -169,15 +251,23 @@ export class SyncService {
     if (this.timerChannel) {
       client?.removeChannel(this.timerChannel);
       this.timerChannel = null;
+      this.timerChannelReady = false;
     }
+    this.pendingBroadcasts = [];
   }
 
   /**
    * Broadcast current timer state to all other logged-in devices.
-   * No-op if not authenticated or offline.
+   * If the channel is not yet subscribed, queues the message to be sent once ready.
+   * No-op if not authenticated.
    */
   public broadcastTimerState(state: Omit<TimerBroadcastState, 'deviceId'>): void {
-    if (!this.timerChannel || !this.auth.isAuthenticated()) return;
+    if (!this.auth.isAuthenticated()) return;
+    if (!this.timerChannel || !this.timerChannelReady) {
+      // Queue it — will be flushed when channel reaches SUBSCRIBED
+      this.pendingBroadcasts.push(state);
+      return;
+    }
     try {
       this.timerChannel.send({
         type: 'broadcast',
@@ -187,6 +277,7 @@ export class SyncService {
     } catch (e) {
       // Non-fatal — broadcast is best-effort
       console.warn('Timer broadcast failed:', e);
+      this.pendingBroadcasts.push(state); // retry on next reconnect
     }
   }
 
@@ -194,6 +285,15 @@ export class SyncService {
   public onRemoteTimerState(cb: (state: TimerBroadcastState) => void): () => void {
     this.timerStateCallbacks.add(cb);
     return () => this.timerStateCallbacks.delete(cb);
+  }
+
+  /**
+   * Subscribe to state_request events (another device just joined and wants current timer state).
+   * Returns unsub fn.
+   */
+  public onStateRequest(cb: () => void): () => void {
+    this.stateRequestCallbacks.add(cb);
+    return () => this.stateRequestCallbacks.delete(cb);
   }
 
   public subscribe(callback: (status: SyncStatus) => void): () => void {

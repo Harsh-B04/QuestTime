@@ -89,6 +89,41 @@ class SoundEffects {
       });
     } catch {}
   }
+
+  public playMoodChime(tier: 'gloomy' | 'calm' | 'warm' | 'bright' | 'vivid' | 'radiant'): void {
+    if (!this.enabled || tier === 'gloomy') return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const chordMap: Record<string, number[]> = {
+        calm: [440, 554.37], // A4, C#5
+        warm: [523.25, 659.25, 783.99], // C5, E5, G5
+        bright: [587.33, 739.99, 880], // D5, F#5, A5
+        vivid: [659.25, 830.61, 987.77, 1318.51], // E5, G#5, B5, E6
+        radiant: [523.25, 659.25, 783.99, 1046.5, 1318.51], // Apex Major 9th arpeggio
+      };
+
+      const notes = chordMap[tier] || chordMap.calm;
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = ctx.currentTime + (i * 0.07);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.09, start);
+        gain.gain.exponentialRampToValueAtTime(0.005, start + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + 0.3);
+      });
+    } catch {}
+  }
 }
 
 export const sounds = new SoundEffects();

@@ -212,6 +212,10 @@ export class Timer {
     return this.sessionStartTime;
   }
 
+  public getStartTimestamp(): number | null {
+    return this.startTimestamp;
+  }
+
   public getContinuousRunningSec(): number {
     if (this.status !== 'running' || !this.startTimestamp) return 0;
     return Math.floor((Date.now() - this.startTimestamp) / 1000);
@@ -223,8 +227,8 @@ export class Timer {
     this.tickCount = 0;
     this.intervalId = setInterval(() => {
       this.tickCount++;
-      // Heartbeat every 10s: re-broadcast so devices that join mid-session catch up
-      if (this.tickCount % 10 === 0) this.broadcast();
+      // Heartbeat every 5s: re-broadcast so devices that join mid-session catch up faster
+      if (this.tickCount % 5 === 0) this.broadcast();
       this.notifyTick();
     }, 1000);
   }
@@ -256,6 +260,8 @@ export class Timer {
   /**
    * Apply timer state received from another device via Supabase Broadcast.
    * Does NOT trigger another broadcast to avoid loops.
+   * Corrects for elapsed wall-clock time so the secondary device shows the right seconds
+   * immediately, not a stale value from when the primary device last broadcast.
    */
   public applyRemoteState(state: Omit<TimerBroadcastState, 'deviceId'>): void {
     this.stopTicker();
@@ -263,10 +269,21 @@ export class Timer {
     this.status = state.status as TimerStatus;
     this.categoryId = state.categoryId;
     this.note = state.note;
-    this.startTimestamp = state.startTimestamp;
-    this.accumulatedSec = state.accumulatedSec;
     this.sessionStartTime = state.sessionStartTime;
     this.tickCount = 0;
+
+    if (state.status === 'running' && state.startTimestamp !== null) {
+      // Account for the wall-clock time that passed between the primary device broadcasting
+      // and this device receiving + applying the state.  Without this the secondary device
+      // shows a number of seconds that is behind by up to the broadcast interval.
+      const elapsedSinceTimestamp = Math.floor((Date.now() - state.startTimestamp) / 1000);
+      this.accumulatedSec = state.accumulatedSec + Math.max(0, elapsedSinceTimestamp);
+      // We set startTimestamp to now so the local ticker stays in sync going forward.
+      this.startTimestamp = Date.now();
+    } else {
+      this.accumulatedSec = state.accumulatedSec;
+      this.startTimestamp = state.startTimestamp;
+    }
 
     // Re-start local ticker if the remote timer is running
     // (local ticker drives the UI — no per-second network calls needed)

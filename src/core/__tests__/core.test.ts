@@ -1,5 +1,4 @@
 import { Session } from '../session';
-import { WeeklyTarget } from '../weeklyTarget';
 import { GamificationEngine } from '../gamification';
 import { TargetTracker } from '../targetTracker';
 import { SessionLog } from '../sessionLog';
@@ -221,14 +220,14 @@ async function runTests() {
   assert(clearedActive === null, 'Active timer cleared from storage upon stop');
 
   // 6. Test Daily Quest Targets (Phase 6)
-  const dailyTarget = await targetTracker.setDailyTarget('cat-coding', 2, '2026-09-07');
+  const dailyTarget = await targetTracker.setDailyTarget('cat-daily-quest', 2, '2026-09-07');
   assert(dailyTarget.dailyTargetHours === 2, 'Daily target set to 2 hours');
 
   // Add session for today
   const today = new Date();
   const todaySession = new Session({
     id: 's-today',
-    categoryId: 'cat-coding',
+    categoryId: 'cat-daily-quest',
     startTime: new Date(today.getTime() - 3600000).toISOString(),
     endTime: today.toISOString(),
     durationSec: 3600, // 1 hour
@@ -245,7 +244,7 @@ async function runTests() {
   // Add another 1 hour session today to complete daily quest
   const todaySession2 = new Session({
     id: 's-today-2',
-    categoryId: 'cat-coding',
+    categoryId: 'cat-daily-quest',
     startTime: new Date(today.getTime() - 7200000).toISOString(),
     endTime: new Date(today.getTime() - 3600000).toISOString(),
     durationSec: 3600, // 1 hour

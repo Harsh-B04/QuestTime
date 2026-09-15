@@ -12,6 +12,10 @@ export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
     costXP: 0,
     accentColor: '#6366f1', // Indigo
     glowColor: 'rgba(99, 102, 241, 0.4)',
+    tier: 'DEFAULT',
+    perks: ['Standard Cyber Matrix', 'Minimalist Digital Focus', 'Subtle Indigo Accent'],
+    lore: 'Issued to all recruits entering QuestTime. Clean, sharp, and distraction-free.',
+    gradient: 'linear-gradient(135deg, #6366f1, #4f46e5)',
   },
   {
     id: 'theme-emerald-matrix',
@@ -19,7 +23,11 @@ export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
     description: 'Vibrant digital rain and matrix neon green glow.',
     costXP: 100,
     accentColor: '#10b981', // Emerald
-    glowColor: 'rgba(16, 185, 129, 0.4)',
+    glowColor: 'rgba(16, 185, 129, 0.45)',
+    tier: 'RARE',
+    perks: ['Terminal Neon Glow', 'Sub-atomic Green Dial', 'Data Cascade Reflections'],
+    lore: 'Tapped directly into the stream of pure focus. See past the code into reality.',
+    gradient: 'linear-gradient(135deg, #10b981, #059669)',
   },
   {
     id: 'theme-solar-flare',
@@ -27,7 +35,11 @@ export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
     description: 'High-energy amber and cosmic sunburst radiance.',
     costXP: 250,
     accentColor: '#f59e0b', // Amber
-    glowColor: 'rgba(245, 158, 11, 0.4)',
+    glowColor: 'rgba(245, 158, 11, 0.5)',
+    tier: 'EPIC',
+    perks: ['Stellar Corona Glow', 'Amber Flare Pulse', 'Solar Wind Particles'],
+    lore: 'Charged by the intense heat of daytime breakthroughs and relentless momentum.',
+    gradient: 'linear-gradient(135deg, #f59e0b, #d97706)',
   },
   {
     id: 'theme-amethyst-mystic',
@@ -35,7 +47,11 @@ export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
     description: 'Deep royal purple with celestial violet resonance.',
     costXP: 500,
     accentColor: '#a855f7', // Purple
-    glowColor: 'rgba(168, 85, 247, 0.4)',
+    glowColor: 'rgba(168, 85, 247, 0.5)',
+    tier: 'EPIC',
+    perks: ['Celestial Violet Aura', 'Astral Dial Resonance', 'Deep Cosmic Acrylics'],
+    lore: 'Crafted for midnight flow states and deep, undisturbed contemplation.',
+    gradient: 'linear-gradient(135deg, #a855f7, #7c3aed)',
   },
   {
     id: 'theme-neon-synthwave',
@@ -43,7 +59,28 @@ export const COSMETIC_SHOP_ITEMS: CosmeticShopItem[] = [
     description: 'Retrofuturistic hot pink and electric magenta pulses.',
     costXP: 800,
     accentColor: '#ec4899', // Pink
-    glowColor: 'rgba(236, 72, 153, 0.4)',
+    glowColor: 'rgba(236, 72, 153, 0.55)',
+    tier: 'LEGENDARY',
+    perks: ['Hot Magenta Overdrive', 'Cyberpunk Grid Aura', 'Neon Horizon Ring'],
+    lore: 'Direct from the neon-soaked grids of Neo-Tokyo. High bpm focus power.',
+    gradient: 'linear-gradient(135deg, #ec4899, #db2777)',
+  },
+  {
+    id: 'theme-infernal-phoenix',
+    name: 'Infernal Phoenix',
+    description: 'Majestic mythical dragonfire and molten core embers. The apex reward for relentless discipline.',
+    costXP: 1200,
+    accentColor: '#ff4500', // Blazing OrangeRed
+    glowColor: 'rgba(255, 69, 0, 0.65)',
+    tier: 'MYTHIC',
+    perks: [
+      'Blazing Dragonfire Aura',
+      'Molten Flame Dial Pulse',
+      'Apex Phoenix Corona',
+      'Incandescent Flame Borders',
+    ],
+    lore: 'Forged in the legendary crucible of 100+ hours of pure focus. Rises from the ashes of distraction to claim ultimate mastery.',
+    gradient: 'linear-gradient(135deg, #ff1a00, #ff5e00, #ffaa00)',
   },
 ];
 
@@ -94,6 +131,7 @@ export interface SessionEvaluationResult {
 export class GamificationEngine {
   private state: GamificationStateDTO;
   private storage: StorageService;
+  private trialCosmeticId: string | null = null;
   private listeners: Set<() => void> = new Set();
   private celebrationListeners: Set<(result: SessionEvaluationResult) => void> = new Set();
 
@@ -192,6 +230,33 @@ export class GamificationEngine {
     return COSMETIC_SHOP_ITEMS.find((c) => c.id === activeId) || COSMETIC_SHOP_ITEMS[0];
   }
 
+  public startTrial(itemId: string): boolean {
+    const item = COSMETIC_SHOP_ITEMS.find((c) => c.id === itemId);
+    if (!item) return false;
+    this.trialCosmeticId = itemId;
+    this.notify();
+    return true;
+  }
+
+  public stopTrial(): void {
+    if (this.trialCosmeticId !== null) {
+      this.trialCosmeticId = null;
+      this.notify();
+    }
+  }
+
+  public getTrialCosmeticId(): string | null {
+    return this.trialCosmeticId;
+  }
+
+  public getActiveOrTrialCosmetic(): CosmeticShopItem {
+    if (this.trialCosmeticId) {
+      const trial = COSMETIC_SHOP_ITEMS.find((c) => c.id === this.trialCosmeticId);
+      if (trial) return trial;
+    }
+    return this.getActiveCosmetic();
+  }
+
   public async purchaseCosmetic(itemId: string): Promise<boolean> {
     const item = COSMETIC_SHOP_ITEMS.find((c) => c.id === itemId);
     if (!item) return false;
@@ -199,6 +264,7 @@ export class GamificationEngine {
     const unlocked = new Set(this.state.unlockedCosmetics || ['theme-cyber-slate']);
     if (unlocked.has(itemId)) {
       this.state.activeCosmetic = itemId;
+      this.trialCosmeticId = null;
       this.state.updatedAt = new Date().toISOString();
       await this.storage.saveGamificationState(this.state);
       this.notify();
@@ -214,6 +280,7 @@ export class GamificationEngine {
     unlocked.add(itemId);
     this.state.unlockedCosmetics = Array.from(unlocked);
     this.state.activeCosmetic = itemId;
+    this.trialCosmeticId = null;
     this.state.updatedAt = new Date().toISOString();
 
     await this.storage.saveGamificationState(this.state);
@@ -231,6 +298,7 @@ export class GamificationEngine {
     }
 
     this.state.activeCosmetic = itemId;
+    this.trialCosmeticId = null;
     this.state.updatedAt = new Date().toISOString();
     await this.storage.saveGamificationState(this.state);
     this.notify();

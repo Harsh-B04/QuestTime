@@ -5,6 +5,7 @@ export class Category {
   public name: string;
   public color: string;
   public icon: string;
+  public ifThenCue?: string;
   public userId?: string;
   public updatedAt: string;
 
@@ -13,6 +14,7 @@ export class Category {
     this.name = data.name.trim();
     this.color = data.color || '#6366f1';
     this.icon = data.icon || 'Clock';
+    this.ifThenCue = data.ifThenCue?.trim() || undefined;
     this.userId = data.userId;
     this.updatedAt = data.updatedAt || new Date().toISOString();
   }
@@ -23,15 +25,17 @@ export class Category {
       name: this.name,
       color: this.color,
       icon: this.icon,
+      ifThenCue: this.ifThenCue,
       userId: this.userId,
       updatedAt: this.updatedAt,
     };
   }
 
-  public update(fields: Partial<Pick<CategoryDTO, 'name' | 'color' | 'icon'>>): void {
+  public update(fields: Partial<Pick<CategoryDTO, 'name' | 'color' | 'icon' | 'ifThenCue'>>): void {
     if (fields.name !== undefined) this.name = fields.name.trim();
     if (fields.color !== undefined) this.color = fields.color;
     if (fields.icon !== undefined) this.icon = fields.icon;
+    if (fields.ifThenCue !== undefined) this.ifThenCue = fields.ifThenCue?.trim() || undefined;
     this.updatedAt = new Date().toISOString();
   }
 

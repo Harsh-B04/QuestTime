@@ -68,11 +68,15 @@ export const HistoryView: React.FC = () => {
     }
   };
 
+  // Stable date strings — computed once per mount
+  const [todayStr] = useState(() => new Date().toISOString().split('T')[0]);
+  const [yesterdayStr] = useState(
+    () => new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  );
+
   const getDayHeading = (dateStr: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    if (dateStr === today) return 'Today';
-    if (dateStr === yesterday) return 'Yesterday';
+    if (dateStr === todayStr) return 'Today';
+    if (dateStr === yesterdayStr) return 'Yesterday';
 
     const d = new Date(dateStr + 'T12:00:00');
     return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
